@@ -1,8 +1,20 @@
 # বাংলাদেশ মনোপলি 🇧🇩 — Bangla Monopoly (online multiplayer)
 
 Real-time, multiplayer Monopoly with an **all-Bangladesh** board and a **full Bangla** UI.
-Players join from any device with a 5-letter room code (like richup.io). All game rules run on an
-authoritative Node server, so clients can't cheat.
+Players join from any device with a 5-letter room code (like richup.io).
+
+## ▶️ Play now (no install): https://xsajolx.github.io/bangla-monopoly/
+
+There are **two builds** in this repo:
+
+1. **`index.html` (root) — serverless P2P build** *(this is what GitHub Pages serves).*
+   The room creator's browser is the authoritative host and runs the full game engine; friends
+   connect directly over WebRTC (PeerJS). No server needed — runs straight off GitHub Pages.
+   *Note:* the room creator must keep their tab open (they're the host), and matchmaking uses the
+   free public PeerJS broker.
+
+2. **`server.js` + `public/` — authoritative Node server build.**
+   Same game, but all rules run on a central server (below). Best for reliability / a permanent host.
 
 ## Run it
 
