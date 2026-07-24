@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>বাংলাদেশ মনোপলি</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+  :root{
+    --felt:#e7f0e3; --ink:#16213e; --gold:#f4c542; --panel:#1b1b2f; --panel2:#26264a;
+    --shadow:0 8px 26px rgba(0,0,0,.28);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Hind Siliguri',system-ui,sans-serif;}
+  html,body{min-height:100%;}
+  body{background:radial-gradient(circle at 30% 8%,#2a2a4a,#0f0f1c 72%);color:#eee;min-height:100vh;}
+
+  /* ---------- LOBBY ---------- */
+  #lobby{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .lcard{background:var(--panel);border:1px solid #33335a;border-radius:18px;box-shadow:var(--shadow);
+    width:min(460px,94vw);padding:28px;text-align:center;}
+  .flag{font-size:40px;}
+  .lcard h1{color:var(--gold);font-size:26px;margin:6px 0 2px;letter-spacing:1px;}
+  .lcard .sub{color:#9aa;font-size:13px;margin-bottom:20px;}
+  .field{text-align:left;margin-bottom:14px;}
+  .field label{display:block;font-size:13px;color:#aab;margin-bottom:5px;}
+  input{width:100%;padding:11px 13px;border-radius:10px;border:1px solid #444;background:#12121f;color:#fff;font-size:15px;}
+  input::placeholder{color:#667;}
+  .btn{width:100%;padding:12px;border:none;border-radius:10px;background:var(--gold);color:#111;font-weight:700;
+    font-size:15px;cursor:pointer;transition:.15s;margin-top:4px;}
+  .btn:hover{filter:brightness(1.07);transform:translateY(-1px);}
+  .btn.sec{background:var(--panel2);color:#fff;}
+  .btn.danger{background:#c0392b;color:#fff;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+  .divider{display:flex;align-items:center;gap:10px;color:#556;margin:16px 0;font-size:12px;}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:#33335a;}
+  .err{color:#ff7b7b;font-size:13px;min-height:18px;margin-top:8px;}
+  .row{display:flex;gap:10px;}
+
+  /* ---------- WAITING ROOM ---------- */
+  #waiting{display:none;}
+  .codebox{background:#12121f;border:2px dashed var(--gold);border-radius:12px;padding:14px;margin-bottom:16px;}
+  .codebox .code{font-size:34px;letter-spacing:8px;color:var(--gold);font-weight:700;}
+  .codebox small{color:#9aa;}
+  .plist{text-align:left;margin:14px 0;display:flex;flex-direction:column;gap:8px;}
+  .plist .pl{display:flex;align-items:center;gap:10px;background:var(--panel2);border-radius:9px;padding:8px 12px;}
+  .pdot{width:16px;height:16px;border-radius:50%;border:2px solid #fff;flex:0 0 auto;}
+  .tag{margin-left:auto;font-size:11px;color:#ffcc55;background:#000;padding:1px 6px;border-radius:6px;}
+
+  /* ---------- GAME ---------- */
+  #game{display:none;padding:18px;gap:20px;justify-content:center;align-items:flex-start;flex-wrap:wrap;}
+  #board{
+    --cell:min(6.4vw,68px);
+    width:calc(var(--cell)*11);height:calc(var(--cell)*11);
+    display:grid;grid-template-columns:repeat(11,var(--cell));grid-template-rows:repeat(11,var(--cell));
+    background:var(--felt);border:3px solid var(--ink);border-radius:6px;box-shadow:var(--shadow);
+    position:relative;flex:0 0 auto;
+  }
+  .cell{border:1px solid rgba(0,0,0,.32);background:#f7f7ef;font-size:calc(var(--cell)*.145);line-height:1.08;
+    padding:2px;position:relative;overflow:hidden;display:flex;flex-direction:column;color:#111;}
+  .cell .nm{font-weight:600;text-align:center;margin-top:2px;word-break:break-word;}
+  .cell .pr{text-align:center;margin-top:auto;font-weight:700;font-size:calc(var(--cell)*.135);}
+  .cell .bar{height:calc(var(--cell)*.22);width:100%;border-bottom:1px solid rgba(0,0,0,.45);}
+  .corner{align-items:center;justify-content:center;text-align:center;font-weight:700;background:#eef0e6;
+    font-size:calc(var(--cell)*.15);}
+  .cell.own{box-shadow:inset 0 0 0 3px var(--own);}
+  .cell.here{animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{background:#f7f7ef}50%{background:#fff6cf}}
+  #center{grid-column:2/11;grid-row:2/11;background:var(--felt);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;padding:12px;}
+  #logo{font-size:calc(var(--cell)*.5);font-weight:700;color:#006a4e;text-align:center;line-height:1.1;
+    text-shadow:1px 1px 0 #fff;}
+  #logo b{color:#d62828;}
+  .midflag{font-size:calc(var(--cell)*.7);}
+  .tokens{position:absolute;bottom:1px;right:1px;display:flex;flex-wrap:wrap;gap:1px;max-width:90%;justify-content:flex-end;}
+  .tok{width:calc(var(--cell)*.19);height:calc(var(--cell)*.19);border-radius:50%;border:1.5px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,.5);}
+  .houses{position:absolute;top:calc(var(--cell)*.22);left:0;width:100%;display:flex;gap:1px;justify-content:center;}
+  .house{width:calc(var(--cell)*.1);height:calc(var(--cell)*.1);background:#2ecc71;border:.5px solid #145a32;}
+  .house.hotel{background:#e74c3c;width:calc(var(--cell)*.2);}
+
+  /* dice in center */
+  #dice{display:flex;gap:10px;}
+  .die{width:calc(var(--cell)*.62);height:calc(var(--cell)*.62);background:#fff;border-radius:9px;
+    display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:5px;gap:2px;box-shadow:0 4px 10px rgba(0,0,0,.4);}
+  .die span{width:calc(var(--cell)*.11);height:calc(var(--cell)*.11);background:#111;border-radius:50%;align-self:center;justify-self:center;}
+  .die.roll{animation:shake .45s;}
+  @keyframes shake{0%,100%{transform:translateY(0) rotate(0)}30%{transform:translateY(-7px) rotate(-14deg)}70%{transform:translateY(4px) rotate(12deg)}}
+
+  /* ---------- PANEL ---------- */
+  #panel{width:340px;display:flex;flex-direction:column;gap:14px;flex:0 0 auto;}
+  .card{background:var(--panel);border:1px solid #33335a;border-radius:14px;padding:14px;box-shadow:var(--shadow);}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#889;margin-bottom:9px;}
+  .players{display:flex;flex-direction:column;gap:7px;}
+  .prow{display:flex;align-items:center;gap:9px;background:var(--panel2);border-radius:9px;padding:7px 10px;transition:.2s;}
+  .prow.active{outline:2px solid var(--gold);}
+  .prow.bankrupt{opacity:.4;text-decoration:line-through;}
+  .prow .nm{font-weight:600;font-size:14px;}
+  .prow .money{margin-left:auto;font-weight:700;color:#40d47e;font-size:14px;}
+  .prow .badge{font-size:10px;background:#000;color:#ffcc55;padding:1px 5px;border-radius:5px;}
+  .prow .off{width:7px;height:7px;border-radius:50%;background:#e74c3c;}
+  .prow .on{width:7px;height:7px;border-radius:50%;background:#40d47e;}
+  #status{text-align:center;font-size:14px;color:#cdd;min-height:20px;margin:2px 0;}
+  #youare{text-align:center;font-size:12px;color:#889;}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+  .gbtn{flex:1 1 auto;min-width:92px;padding:11px;border:none;border-radius:9px;background:var(--gold);color:#111;
+    font-weight:700;font-size:14px;cursor:pointer;transition:.15s;}
+  .gbtn:hover:not(:disabled){filter:brightness(1.08);transform:translateY(-1px);}
+  .gbtn.sec{background:var(--panel2);color:#fff;}
+  .gbtn.danger{background:#c0392b;color:#fff;}
+  .gbtn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+  #log{height:190px;overflow-y:auto;font-size:12.5px;line-height:1.55;background:#101020;border-radius:9px;padding:9px;
+    display:flex;flex-direction:column-reverse;}
+  #log div{padding:2px 0;border-bottom:1px solid #20203a;}
+  .good{color:#40d47e;} .rent{color:#ffa94d;} .bad{color:#ff6b6b;} .info{color:#8ab4f8;} .chat{color:#e0c3fc;}
+  .chatbox{display:flex;gap:8px;margin-top:8px;}
+  .chatbox input{flex:1;padding:8px;}
+  .chatbox button{padding:8px 12px;border:none;border-radius:8px;background:var(--panel2);color:#fff;cursor:pointer;}
+
+  /* ---------- MODAL / CARD POPUP ---------- */
+  #cardpop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50;}
+  #cardpop.show{display:flex;}
+  .cbox{background:#fff;color:#111;border-radius:16px;padding:26px 22px;width:min(340px,90vw);text-align:center;box-shadow:var(--shadow);
+    border-top:10px solid var(--gold);}
+  .cbox h3{font-size:20px;margin-bottom:12px;}
+  .cbox p{font-size:16px;line-height:1.6;}
+  #buildpop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60;}
+  #buildpop.show{display:flex;}
+  .bbox{background:var(--panel);border:2px solid var(--gold);border-radius:14px;padding:20px;width:min(380px,92vw);}
+  .bbox h3{color:var(--gold);text-align:center;margin-bottom:12px;}
+  .bitem{display:flex;align-items:center;gap:8px;background:var(--panel2);border-radius:8px;padding:8px 10px;margin-bottom:7px;font-size:13px;}
+  .bitem .bn{flex:1;}
+  .bitem button{border:none;border-radius:7px;padding:6px 10px;font-weight:700;cursor:pointer;font-size:12px;}
+  .bitem .add{background:#40d47e;color:#062;}
+  .bitem .rem{background:#ff9d6b;color:#411;}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOBBY ===================== -->
+<div id="lobby">
+  <div class="lcard" id="entry">
+    <div class="flag">🇧🇩</div>
+    <h1>বাংলাদেশ মনোপলি</h1>
+    <div class="sub">অনলাইন মাল্টিপ্লেয়ার · বন্ধুদের সাথে খেলুন</div>
+
+    <div class="field">
+      <label>আপনার নাম</label>
+      <input id="nameInput" placeholder="যেমনঃ সজল" maxlength="16">
+    </div>
+
+    <button class="btn" id="createBtn">নতুন রুম তৈরি করুন</button>
+
+    <div class="divider">অথবা</div>
+
+    <div class="field">
+      <label>রুম কোড</label>
+      <input id="codeInput" placeholder="যেমনঃ ABCDE" maxlength="5" style="text-transform:uppercase;letter-spacing:4px;text-align:center;">
+    </div>
+    <button class="btn sec" id="joinBtn">রুমে যোগ দিন</button>
+    <div class="err" id="lobbyErr"></div>
+  </div>
+
+  <!-- waiting room -->
+  <div class="lcard" id="waiting">
+    <div class="flag">🇧🇩</div>
+    <h1>অপেক্ষা করছি…</h1>
+    <div class="sub">বন্ধুদের এই কোড পাঠান</div>
+    <div class="codebox">
+      <div class="code" id="roomCode">-----</div>
+      <small>এই কোড দিয়ে যে কেউ যোগ দিতে পারবে</small>
+    </div>
+    <button class="btn sec" id="copyBtn" style="margin-bottom:8px;">🔗 লিংক কপি করুন</button>
+    <div class="plist" id="wPlayers"></div>
+    <div class="row" id="hostControls" style="display:none;">
+      <button class="btn sec" id="addBotBtn">🤖 বট যোগ</button>
+      <button class="btn sec" id="rmBotBtn">বট বাদ</button>
+    </div>
+    <button class="btn" id="startBtn" style="display:none;">খেলা শুরু করুন</button>
+    <div class="sub" id="waitNote" style="margin-top:12px;">হোস্ট খেলা শুরু করার অপেক্ষায়…</div>
+    <div class="err" id="waitErr"></div>
+  </div>
+</div>
+
+<!-- ===================== GAME ===================== -->
+<div id="game">
+  <div id="board"></div>
+  <div id="panel">
+    <div class="card">
+      <h2>খেলোয়াড়</h2>
+      <div class="players" id="players"></div>
+    </div>
+    <div class="card">
+      <div id="youare"></div>
+      <div id="status">…</div>
+      <div class="btnrow" style="margin-top:10px;">
+        <button class="gbtn" id="rollBtn">🎲 ছক্কা ফেলুন</button>
+        <button class="gbtn sec" id="buyBtn" disabled>কিনুন</button>
+        <button class="gbtn sec" id="endBtn" disabled>পালা শেষ</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px;">
+        <button class="gbtn sec" id="buildBtn" disabled>🏠 নির্মাণ</button>
+        <button class="gbtn danger" id="bailBtn" disabled>জামিন ৳৫০</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>খেলার বিবরণ</h2>
+      <div id="log"></div>
+      <div class="chatbox">
+        <input id="chatInput" placeholder="বার্তা লিখুন…" maxlength="120">
+        <button id="chatSend">পাঠান</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="cardpop"><div class="cbox"><h3 id="cardTitle"></h3><p id="cardText"></p></div></div>
+<div id="buildpop"><div class="bbox"><h3>🏠 বাড়ি / হোটেল নির্মাণ</h3><div id="buildList"></div>
+  <button class="btn" id="buildClose" style="margin-top:8px;">বন্ধ করুন</button></div></div>
+
+<script>
+/* ---------- Bangla numerals ---------- */
+const BN = ["০","১","২","৩","৪","৫","৬","৭","৮","৯"];
+const toBn = (n) => String(n).replace(/\d/g, (d) => BN[+d]);
+const taka = (n) => "৳" + toBn(n);
+
+/* ---------- persistent client id (survives refresh -> reclaim seat) ---------- */
+let clientId = localStorage.getItem("bm_cid");
+if (!clientId) { clientId = "c-" + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("bm_cid", clientId); }
+
+/* ---------- websocket ---------- */
+let ws, S = null, YOU = -1, IS_HOST = false, MY_CODE = null;
+let lastCardShown = null, lastDice = "";
+
+function connect(onOpen) {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => onOpen && onOpen();
+  ws.onmessage = (e) => handle(JSON.parse(e.data));
+  ws.onclose = () => setTimeout(() => connect(() => rejoin()), 1200); // auto-reconnect
+}
+function rejoin() {
+  if (MY_CODE) sendMsg({ type: "join", code: MY_CODE, name: nameVal(), clientId });
+}
+function sendMsg(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+function nameVal() { return (document.getElementById("nameInput").value || "খেলোয়াড়").trim(); }
+
+/* ---------- lobby actions ---------- */
+document.getElementById("createBtn").onclick = () => {
+  if (!nameVal()) return setErr("lobbyErr", "নাম লিখুন।");
+  connect(() => sendMsg({ type: "create", name: nameVal(), clientId }));
+};
+document.getElementById("joinBtn").onclick = () => {
+  const code = document.getElementById("codeInput").value.trim().toUpperCase();
+  if (!nameVal()) return setErr("lobbyErr", "নাম লিখুন।");
+  if (code.length !== 5) return setErr("lobbyErr", "৫ অক্ষরের রুম কোড দিন।");
+  MY_CODE = code;
+  connect(() => sendMsg({ type: "join", code, name: nameVal(), clientId }));
+};
+document.getElementById("startBtn").onclick = () => sendMsg({ type: "start" });
+document.getElementById("addBotBtn").onclick = () => sendMsg({ type: "addBot" });
+document.getElementById("rmBotBtn").onclick = () => sendMsg({ type: "removeBot" });
+document.getElementById("copyBtn").onclick = () => {
+  const url = `${location.origin}?room=${MY_CODE}`;
+  navigator.clipboard?.writeText(url);
+  document.getElementById("copyBtn").textContent = "✓ কপি হয়েছে!";
+  setTimeout(() => (document.getElementById("copyBtn").textContent = "🔗 লিংক কপি করুন"), 1500);
+};
+function setErr(id, m) { document.getElementById(id).textContent = m; }
+
+/* auto-fill room code from ?room= */
+const qsRoom = new URLSearchParams(location.search).get("room");
+if (qsRoom) document.getElementById("codeInput").value = qsRoom.toUpperCase();
+
+/* ---------- game buttons ---------- */
+document.getElementById("rollBtn").onclick  = () => sendMsg({ type: "roll" });
+document.getElementById("buyBtn").onclick   = () => sendMsg({ type: "buy" });
+document.getElementById("endBtn").onclick   = () => sendMsg({ type: "end" });
+document.getElementById("bailBtn").onclick  = () => sendMsg({ type: "bail" });
+document.getElementById("buildBtn").onclick = () => openBuild();
+document.getElementById("buildClose").onclick = () => document.getElementById("buildpop").classList.remove("show");
+document.getElementById("chatSend").onclick = sendChat;
+document.getElementById("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
+function sendChat() {
+  const el = document.getElementById("chatInput");
+  if (el.value.trim()) { sendMsg({ type: "chat", text: el.value.trim() }); el.value = ""; }
+}
+
+/* ---------- message handler ---------- */
+function handle(m) {
+  if (m.type === "error") {
+    setErr(entryVisible() ? "lobbyErr" : "waitErr", m.message);
+    return;
+  }
+  if (m.type === "joined") {
+    YOU = m.you; IS_HOST = m.isHost; MY_CODE = m.code;
+    showWaiting();
+    return;
+  }
+  if (m.type === "state") {
+    S = m; if (typeof m.you === "number") YOU = m.you;
+    render();
+  }
+}
+function entryVisible() { return document.getElementById("waiting").style.display !== "block"; }
+
+/* ---------- screen switches ---------- */
+function showWaiting() {
+  document.getElementById("entry").style.display = "none";
+  document.getElementById("waiting").style.display = "block";
+  document.getElementById("roomCode").textContent = MY_CODE;
+}
+function showGame() {
+  document.getElementById("lobby").style.display = "none";
+  document.getElementById("game").style.display = "flex";
+  buildBoardDOM();
+}
+
+/* ---------- render dispatcher ---------- */
+function render() {
+  if (!S) return;
+  if (S.started || S.phase === "over") { if (document.getElementById("game").style.display !== "flex") showGame(); renderGame(); }
+  else renderWaiting();
+}
+
+/* ---------- waiting room ---------- */
+function renderWaiting() {
+  const box = document.getElementById("wPlayers");
+  box.innerHTML = "";
+  S.players.forEach((p) => {
+    const d = document.createElement("div"); d.className = "pl";
+    d.innerHTML = `<div class="pdot" style="background:${p.color}"></div><div>${p.name}</div>` +
+      (p.isBot ? `<span class="tag">বট</span>` : "");
+    box.appendChild(d);
+  });
+  const host = S.players.length && S.players[0].clientId; // not exposed; use IS_HOST flag
+  document.getElementById("hostControls").style.display = IS_HOST ? "flex" : "none";
+  document.getElementById("startBtn").style.display = IS_HOST ? "block" : "none";
+  document.getElementById("startBtn").disabled = S.players.length < 2;
+  document.getElementById("waitNote").style.display = IS_HOST ? "none" : "block";
+}
+
+/* ---------- board DOM (built once) ---------- */
+const cellEls = [];
+function gridPos(i) {
+  if (i <= 10) return { r: 11, c: 11 - i };
+  if (i <= 20) return { r: 11 - (i - 10), c: 1 };
+  if (i <= 30) return { r: 1, c: 1 + (i - 20) };
+  return { r: 1 + (i - 30), c: 11 };
+}
+function buildBoardDOM() {
+  const bd = document.getElementById("board");
+  bd.innerHTML = "";
+  const center = document.createElement("div");
+  center.id = "center";
+  center.innerHTML = `<div class="midflag">🇧🇩</div><div id="logo">বাংলাদেশ<br><b>মনোপলি</b></div><div id="dice"><div class="die"></div><div class="die"></div></div>`;
+  bd.appendChild(center);
+
+  S.board.forEach((sq, i) => {
+    const el = document.createElement("div");
+    const gp = gridPos(i);
+    el.style.gridRow = gp.r; el.style.gridColumn = gp.c;
+    el.className = "cell" + (i % 10 === 0 ? " corner" : "");
+    el.innerHTML = cellHTML(sq);
+    bd.appendChild(el);
+    cellEls[i] = el;
+  });
+  drawDice();
+}
+function cellHTML(sq) {
+  const col = S.colors;
+  if (sq.type === "prop")
+    return `<div class="bar" style="background:${col[sq.group]}"></div><div class="nm">${sq.n}</div><div class="pr">${taka(sq.price)}</div>`;
+  if (sq.type === "rr")
+    return `<div class="nm">🚉<br>${sq.n}</div><div class="pr">${taka(200)}</div>`;
+  if (sq.type === "util")
+    return `<div class="nm">${sq.n.includes("বিদ্যুৎ") ? "💡" : "🔥"}<br>${sq.n}</div><div class="pr">${taka(150)}</div>`;
+  if (sq.type === "tax")
+    return `<div class="nm">💰<br>${sq.n}</div><div class="pr">${taka(sq.amount)}</div>`;
+  if (sq.type === "chance")
+    return `<div class="nm" style="margin-top:20%;font-size:1.6em">❓</div><div class="nm">${sq.n}</div>`;
+  if (sq.type === "chest")
+    return `<div class="nm" style="margin-top:20%;font-size:1.6em">📦</div><div class="nm">${sq.n}</div>`;
+  if (sq.type === "go")   return `<div style="text-align:center">⬅️<br>শুরু<br>${taka(200)}</div>`;
+  if (sq.type === "jail") return `<div style="text-align:center">🔒<br>কারাগার</div>`;
+  if (sq.type === "free") return `<div style="text-align:center">🅿️<br>ফ্রি<br>পার্কিং</div>`;
+  if (sq.type === "gotojail") return `<div style="text-align:center">🚔<br>জেলে<br>যাও</div>`;
+  return sq.n;
+}
+
+/* ---------- game render ---------- */
+function renderGame() {
+  // players panel
+  const pl = document.getElementById("players");
+  pl.innerHTML = "";
+  S.players.forEach((p, i) => {
+    const d = document.createElement("div");
+    d.className = "prow" + (i === S.turn ? " active" : "") + (p.bankrupt ? " bankrupt" : "");
+    d.innerHTML =
+      `<div class="pdot" style="background:${p.color}"></div>
+       <div class="nm">${p.name}${i === YOU ? " (আপনি)" : ""}</div>
+       ${p.jail ? '<span class="badge">জেল</span>' : ""}
+       ${p.isBot ? '<span class="badge">বট</span>' : `<span class="${p.connected ? "on" : "off"}"></span>`}
+       <div class="money">${taka(p.money)}</div>`;
+    pl.appendChild(d);
+  });
+
+  // ownership + houses + tokens
+  cellEls.forEach((el, i) => {
+    el.classList.remove("own", "here");
+    el.style.removeProperty("--own");
+    const o = S.ownership[i];
+    if (o !== undefined) { el.classList.add("own"); el.style.setProperty("--own", S.players[o].color); }
+  });
+  // current player's cell highlight
+  if (S.players[S.turn]) cellEls[S.players[S.turn].pos]?.classList.add("here");
+
+  // remove old tokens/houses
+  document.querySelectorAll(".tokens,.houses").forEach((e) => e.remove());
+  const byCell = {};
+  S.players.forEach((p) => { if (!p.bankrupt) (byCell[p.pos] = byCell[p.pos] || []).push(p); });
+  Object.entries(byCell).forEach(([pos, list]) => {
+    const c = document.createElement("div"); c.className = "tokens";
+    list.forEach((p) => { const t = document.createElement("div"); t.className = "tok"; t.style.background = p.color; c.appendChild(t); });
+    cellEls[pos].appendChild(c);
+  });
+  Object.entries(S.houses).forEach(([pos, n]) => {
+    if (!n) return;
+    const h = document.createElement("div"); h.className = "houses";
+    if (n === 5) { const e = document.createElement("div"); e.className = "house hotel"; h.appendChild(e); }
+    else for (let k = 0; k < n; k++) { const e = document.createElement("div"); e.className = "house"; h.appendChild(e); }
+    cellEls[pos].appendChild(h);
+  });
+
+  // dice (animate on change)
+  const dkey = S.dice.join("-") + "/" + S.turn + "/" + S.phase;
+  if (dkey !== lastDice) { drawDice(true); lastDice = dkey; }
+
+  // log
+  const logEl = document.getElementById("log");
+  logEl.innerHTML = "";
+  S.log.slice().reverse().forEach((l) => {
+    const d = document.createElement("div"); d.className = l.cls; d.textContent = l.text; logEl.appendChild(d);
+  });
+
+  // status + controls
+  const me = S.turn === YOU;
+  const p = S.players[S.turn];
+  document.getElementById("youare").textContent =
+    S.winner ? "" : (me ? "আপনার পালা!" : `${p.name}-এর পালা…`);
+
+  if (S.winner) {
+    document.getElementById("status").innerHTML = `🏆 <b>${S.winner}</b> জিতেছেন!`;
+    ["rollBtn","buyBtn","endBtn","buildBtn","bailBtn"].forEach((id) => (document.getElementById(id).disabled = true));
+  } else {
+    const sq = S.board[p.pos];
+    let st = "";
+    if (S.phase === "awaitRoll") st = me ? (p.jail ? "কারাগারে — ছক্কা ফেলুন বা জামিন দিন।" : "ছক্কা ফেলুন।") : "অপেক্ষা করছি…";
+    else if (S.phase === "awaitEnd") st = me ? (S.canBuy ? `${sq.n} কিনবেন ${taka(sq.price)}?` : "পালা শেষ করুন বা নির্মাণ করুন।") : "অপেক্ষা করছি…";
+    document.getElementById("status").textContent = st;
+
+    document.getElementById("rollBtn").disabled  = !(me && S.phase === "awaitRoll");
+    document.getElementById("buyBtn").disabled    = !(me && S.phase === "awaitEnd" && S.canBuy);
+    document.getElementById("endBtn").disabled    = !(me && S.phase === "awaitEnd");
+    document.getElementById("bailBtn").disabled   = !(me && S.phase === "awaitRoll" && p.jail && p.money >= 50);
+    document.getElementById("buildBtn").disabled  = !(me && (S.phase === "awaitEnd" || S.phase === "awaitRoll") && hasBuildable());
+  }
+
+  // card popup
+  if (S.lastCard && JSON.stringify(S.lastCard) !== lastCardShown) {
+    lastCardShown = JSON.stringify(S.lastCard);
+    showCard(S.lastCard.deck, S.lastCard.text);
+  }
+  if (!S.lastCard) lastCardShown = null;
+
+  // keep build menu in sync while it is open
+  if (document.getElementById("buildpop").classList.contains("show")) openBuild();
+}
+
+function drawDice(animate) {
+  const P = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
+  document.querySelectorAll("#dice .die").forEach((die, k) => {
+    const v = S.dice[k] || 1;
+    die.innerHTML = "";
+    for (let j = 0; j < 9; j++) { const s = document.createElement("span"); if (!P[v].includes(j)) s.style.visibility = "hidden"; die.appendChild(s); }
+    if (animate) { die.classList.remove("roll"); void die.offsetWidth; die.classList.add("roll"); }
+  });
+}
+
+/* ---------- card popup ---------- */
+function showCard(title, text) {
+  document.getElementById("cardTitle").textContent = title;
+  document.getElementById("cardText").textContent = text;
+  const pop = document.getElementById("cardpop");
+  pop.classList.add("show");
+  setTimeout(() => pop.classList.remove("show"), 2600);
+}
+
+/* ---------- build menu ---------- */
+function myFullSets() {
+  const groups = {};
+  S.board.forEach((s, i) => { if (s.type === "prop" && S.ownership[i] === YOU) (groups[s.group] = groups[s.group] || []).push(i); });
+  const cells = [];
+  Object.entries(groups).forEach(([g, arr]) => {
+    const all = S.board.map((s, i) => ({ s, i })).filter((x) => x.s.group === g);
+    if (all.every((x) => S.ownership[x.i] === YOU)) cells.push(...arr);
+  });
+  return cells;
+}
+function hasBuildable() { return myFullSets().length > 0; }
+function openBuild() {
+  const list = document.getElementById("buildList");
+  const cells = myFullSets();
+  list.innerHTML = "";
+  if (!cells.length) { list.innerHTML = "<p style='text-align:center;color:#889'>নির্মাণের জন্য একটি সম্পূর্ণ রঙের সেট দরকার।</p>"; }
+  cells.forEach((i) => {
+    const n = S.houses[i] || 0;
+    const label = n === 5 ? "হোটেল (সর্বোচ্চ)" : toBn(n) + " বাড়ি";
+    const row = document.createElement("div"); row.className = "bitem";
+    row.innerHTML = `<span class="bn">${S.board[i].n} · ${label}</span>
+      <button class="rem" ${n <= 0 ? "disabled style='opacity:.4'" : ""}>−</button>
+      <button class="add" ${n >= 5 ? "disabled style='opacity:.4'" : ""}>+ ${taka(S.board[i].house)}</button>`;
+    row.querySelector(".add").onclick = () => sendMsg({ type: "build", pos: i });
+    row.querySelector(".rem").onclick = () => sendMsg({ type: "sell", pos: i });
+    list.appendChild(row);
+  });
+  document.getElementById("buildpop").classList.add("show");
+}
+</script>
+</body>
+</html>

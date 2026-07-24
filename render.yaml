@@ -1,0 +1,12 @@
+# One-click deploy config for Render (https://render.com)
+# New > Blueprint > point at this repo, or New > Web Service > connect repo.
+services:
+  - type: web
+    name: bangla-monopoly
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
