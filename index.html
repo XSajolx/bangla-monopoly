@@ -89,14 +89,20 @@
 
   #panel{width:352px;display:flex;flex-direction:column;gap:14px;flex:0 0 auto;}
   .card{background:var(--panel);border:1px solid #33335a;border-radius:14px;padding:14px;box-shadow:var(--shadow);}
-  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#889;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#889;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;}
+  .card h2 .chev{transition:.15s;color:#667;}
+  .card.folded h2{margin-bottom:0;}
+  .card.folded h2 .chev{transform:rotate(-90deg);}
+  .card.folded>*:not(h2){display:none!important;}
+  .prow .rt{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;}
+  .prow .worth{font-size:10px;color:#8a93b5;font-weight:500;}
   .players{display:flex;flex-direction:column;gap:7px;}
   .prow{display:flex;align-items:center;gap:9px;background:var(--panel2);border-radius:9px;padding:7px 10px;transition:.2s;}
   .prow.active{outline:2px solid var(--gold);}
   .prow.bankrupt{opacity:.4;text-decoration:line-through;}
   .miniav{width:24px;height:24px;flex:0 0 auto;}
   .prow .nm{font-weight:600;font-size:14px;}
-  .prow .money{margin-left:auto;font-weight:700;color:#40d47e;font-size:14px;}
+  .prow .money{font-weight:700;color:#40d47e;font-size:14px;}
   .prow .badge{font-size:10px;background:#000;color:#ffcc55;padding:1px 5px;border-radius:5px;}
   .prow .off{width:7px;height:7px;border-radius:50%;background:#e74c3c;}
   .prow .on{width:7px;height:7px;border-radius:50%;background:#40d47e;}
@@ -553,7 +559,7 @@ window.addEventListener("resize",()=>{if(S&&document.getElementById("game").styl
 
 function entryVisible(){return document.getElementById("waiting").style.display!=="block";}
 function showWaiting(){document.getElementById("entry").style.display="none";document.getElementById("waiting").style.display="block";document.getElementById("roomCode").textContent=NET.code;}
-function showGame(){document.getElementById("lobby").style.display="none";document.getElementById("game").style.display="flex";buildBoardDOM();}
+function showGame(){document.getElementById("lobby").style.display="none";document.getElementById("game").style.display="flex";buildBoardDOM();wireFold();}
 function render(){if(!S)return;if(S.started||S.phase==="over"){if(document.getElementById("game").style.display!=="flex")showGame();renderGame();}else renderWaiting();}
 
 function renderWaiting(){const box=document.getElementById("wPlayers");box.innerHTML="";
@@ -584,6 +590,10 @@ function renderSettings(){const box=document.getElementById("settingsPanel");if(
   box.querySelectorAll("[data-tog]").forEach(el=>{el.onclick=()=>act({type:"setRule",key:el.dataset.tog,value:!el.classList.contains("on")});});
   box.querySelectorAll("[data-sel]").forEach(el=>{el.onchange=()=>act({type:"setRule",key:el.dataset.sel,value:+el.value});});}
 function miniAv(c){return `<span class="miniav"><span class="face" style="--c:${c};position:relative;display:inline-flex"><span class="eye l"></span><span class="eye r"></span></span></span>`;}
+/* net worth = cash + property prices + houses built (m1pro-style "player worth") */
+function netWorth(i){let w=S.players[i].money;BOARD.forEach((s,pos)=>{if(S.ownership[pos]===i){if(s.price)w+=s.price;const h=S.houses[pos]||0;if(h&&s.house)w+=h*s.house;}});return w;}
+/* collapsible panel cards (m1pro-style foldable blocks) */
+function wireFold(){document.querySelectorAll("#panel .card h2").forEach(h=>{if(h.dataset.fold)return;h.dataset.fold="1";const c=document.createElement("span");c.className="chev";c.textContent="▾";h.appendChild(c);h.onclick=()=>h.parentElement.classList.toggle("folded");});}
 
 /* board */
 const cellEls=[];let tokenLayer=null,tokenEls={},renderedPos={},animSeq={};
@@ -621,7 +631,7 @@ function repositionTokens(){S.players.forEach((p,i)=>{if(tokenEls[i]&&renderedPo
 function renderGame(){
   const pl=document.getElementById("players");pl.innerHTML="";
   S.players.forEach((p,i)=>{const d=document.createElement("div");d.className="prow"+(i===S.turn?" active":"")+(p.bankrupt?" bankrupt":"");
-    d.innerHTML=`${miniAv(p.color)}<div class="nm">${p.name}${i===YOU?" (আপনি)":""}</div>${p.jail?'<span class="badge">জেল</span>':""}${p.isBot?'<span class="badge">বট</span>':`<span class="${p.connected?"on":"off"}"></span>`}<div class="money">${taka(p.money)}</div>`;pl.appendChild(d);});
+    d.innerHTML=`${miniAv(p.color)}<div class="nm">${p.name}${i===YOU?" (আপনি)":""}</div>${p.jail?'<span class="badge">জেল</span>':""}${p.isBot?'<span class="badge">বট</span>':`<span class="${p.connected?"on":"off"}"></span>`}<div class="rt"><span class="money">${taka(p.money)}</span><span class="worth">সম্পদ ${taka(netWorth(i))}</span></div>`;pl.appendChild(d);});
   cellEls.forEach((el,i)=>{el.classList.remove("own","here");el.style.removeProperty("--own");const o=S.ownership[i];if(o!==undefined){el.classList.add("own");el.style.setProperty("--own",S.players[o].color);}});
   if(S.players[S.turn])cellEls[S.players[S.turn].pos]?.classList.add("here");
   document.querySelectorAll(".houses").forEach(e=>e.remove());
