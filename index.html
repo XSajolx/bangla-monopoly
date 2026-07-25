@@ -145,6 +145,39 @@
   .cbox{background:#fff;color:#111;border-radius:16px;padding:26px 22px;width:min(340px,90vw);text-align:center;box-shadow:var(--shadow);border-top:10px solid var(--gold);}
   .cbox h3{font-size:20px;margin-bottom:12px;}.cbox p{font-size:16px;line-height:1.6;}
   #conn{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#000a;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;z-index:80;display:none;}
+  /* settings panel */
+  #settingsPanel{text-align:left;margin:6px 0 12px;}
+  .setgrp{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#8a7fd6;text-align:center;margin:12px 0 6px;}
+  .setrow{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #24243f;}
+  .setrow .si{font-size:16px;width:20px;text-align:center;}
+  .setrow .sl{flex:1;}
+  .setrow .sl b{font-size:13px;font-weight:600;display:block;}
+  .setrow .sl small{font-size:11px;color:#778;line-height:1.2;}
+  .setrow select{width:auto;padding:5px 8px;margin:0;font-size:13px;}
+  .sw-tog{width:42px;height:24px;border-radius:14px;background:#3a3a5a;position:relative;cursor:pointer;flex:0 0 auto;transition:.15s;}
+  .sw-tog.on{background:#6c5ce7;}
+  .sw-tog::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s;}
+  .sw-tog.on::after{left:21px;}
+  .sw-tog.locked{opacity:.5;cursor:not-allowed;}
+  /* auction */
+  #auctionBox{text-align:center;}
+  .aucprop{font-size:20px;font-weight:700;color:var(--gold);margin-bottom:4px;}
+  .auchigh{font-size:15px;margin:10px 0;}
+  .aucrow{display:flex;gap:8px;margin-top:12px;}
+  .aucrow input{flex:1;}
+  /* mobile */
+  @media (max-width:860px){
+    #game{padding:10px;gap:12px;flex-direction:column;align-items:center;}
+    #board{--cell:calc((100vw - 20px)/11);}
+    #panel{width:100%;max-width:min(96vw,560px);}
+    .gbtn{min-width:0;}
+    .lcard{padding:20px 16px;}
+  }
+  @media (max-width:400px){
+    .die{width:calc(var(--cell)*.82);height:calc(var(--cell)*.82);}
+    #logo{font-size:calc(var(--cell)*.42);}
+    .setrow .sl small{display:none;}
+  }
 </style>
 </head>
 <body>
@@ -173,6 +206,7 @@
     <div class="codebox"><div class="code" id="roomCode">-----</div><small>এই কোড দিয়ে যে কেউ যোগ দিতে পারবে</small></div>
     <button class="btn sec" id="copyBtn" style="margin-bottom:8px;">🔗 লিংক কপি করুন</button>
     <div class="plist" id="wPlayers"></div>
+    <div id="settingsPanel"></div>
     <div class="row" id="hostControls" style="display:none;">
       <button class="btn sec" id="addBotBtn">🤖 বট যোগ</button>
       <button class="btn sec" id="rmBotBtn">বট বাদ</button>
@@ -219,6 +253,7 @@
 <div class="modal" id="buildpop"><div class="mbox"><h3>🏠 বাড়ি / হোটেল</h3><div id="buildList"></div><button class="btn" id="buildClose" style="margin-top:8px;">বন্ধ করুন</button></div></div>
 <div class="modal" id="tradepop"><div class="mbox" id="tradeBox"></div></div>
 <div class="modal" id="votepop"><div class="mbox"><h3>🥾 ভোট-কিক</h3><div id="voteList"></div><button class="btn" id="voteClose" style="margin-top:8px;">বন্ধ করুন</button></div></div>
+<div class="modal" id="auctionpop"><div class="mbox" id="auctionBox"></div></div>
 
 <script>
 /* ============================================================
@@ -311,11 +346,11 @@ function logMsg(r,text,cls=""){r.log.push({text,cls});if(r.log.length>60)r.log.s
 function ownsGroup(r,p,g){return BOARD.map((s,i)=>({s,i})).filter(x=>x.s.group===g).every(x=>r.ownership[x.i]===idxOf(r,p));}
 function countType(r,p,t){let c=0;BOARD.forEach((s,i)=>{if(s.type===t&&r.ownership[i]===idxOf(r,p))c++;});return c;}
 function credit(r,p,a){p.money+=a;logMsg(r,`${p.name} ৳${a} পেলেন।`,"good");}
-function debit(r,p,a,to){p.money-=a;if(to){to.money+=a;logMsg(r,`${p.name} → ${to.name} ভাড়া ৳${a}।`,"rent");}else logMsg(r,`${p.name} ৳${a} পরিশোধ করলেন।`,"bad");if(p.money<0)settleDebt(r,p,to);}
+function debit(r,p,a,to){p.money-=a;if(to){to.money+=a;logMsg(r,`${p.name} → ${to.name} ভাড়া ৳${a}।`,"rent");}else{if(r.rules.vacationCash)r.pot+=a;logMsg(r,`${p.name} ৳${a} পরিশোধ করলেন।`,"bad");}if(p.money<0)settleDebt(r,p,to);}
 function birthday(r,p){let g=0;r.players.forEach(o=>{if(o!==p&&!o.bankrupt){o.money-=10;g+=10;}});p.money+=g;logMsg(r,`${p.name} জন্মদিনে সবার থেকে ৳${g} পেলেন।`,"good");}
 function repairs(r,p,ph,pt){let c=0;Object.keys(r.houses).forEach(pos=>{if(r.ownership[pos]===idxOf(r,p)){const n=r.houses[pos];c+=n===5?pt:n*ph;}});if(c>0){logMsg(r,`${p.name} মেরামত খরচ ৳${c}।`,"bad");debit(r,p,c);}}
 function releaseProps(r,idx,creditor){Object.keys(r.ownership).forEach(pos=>{if(r.ownership[pos]===idx){if(creditor!=null&&!r.players[creditor].bankrupt)r.ownership[pos]=creditor;else delete r.ownership[pos];r.houses[pos]=0;}});}
-function advanceTurn(r){r.canBuy=false;r.lastCard=null;r.doubles=0;let g=0;do{r.turn=(r.turn+1)%r.players.length;g++;}while(r.players[r.turn]&&r.players[r.turn].bankrupt&&g<20);r.phase="awaitRoll";if(cur(r))logMsg(r,`▶ ${cur(r).name}-এর পালা।`,"info");}
+function advanceTurn(r){r.canBuy=false;r.lastCard=null;r.landedProp=null;r.doubles=0;let g=0;do{r.turn=(r.turn+1)%r.players.length;g++;}while(r.players[r.turn]&&r.players[r.turn].bankrupt&&g<20);r.phase="awaitRoll";if(cur(r))logMsg(r,`▶ ${cur(r).name}-এর পালা।`,"info");}
 function bankruptPlayer(r,idx,creditor,duringRoll){const p=r.players[idx];if(!p||p.bankrupt)return;p.bankrupt=true;logMsg(r,`💀 ${p.name} দেউলিয়া / খেলা থেকে বাদ।`,"bad");releaseProps(r,idx,creditor);p.money=0;
   // drop pending trades & votes involving this player
   r.trades=r.trades.filter(t=>t.from!==idx&&t.to!==idx);delete r.votes[idx];Object.keys(r.votes).forEach(k=>{r.votes[k]=r.votes[k].filter(v=>v!==idx);});
@@ -324,22 +359,22 @@ function settleDebt(r,p,cr){const mine=Object.keys(r.houses).filter(pos=>r.owner
 function moveTo(r,p,pos,go){if(go&&pos<p.pos){p.money+=200;logMsg(r,`${p.name} শুরু পার হয়ে ৳২০০ পেলেন।`,"good");}p.pos=pos;landOn(r,p);}
 function advance(r,p,s){const np=(p.pos+s)%40;if(np<p.pos){p.money+=200;logMsg(r,`${p.name} শুরু পার হয়ে ৳২০০ পেলেন।`,"good");}p.pos=np;landOn(r,p);}
 function goJail(r,p){p.pos=10;p.jail=true;p.jailTurns=0;r.doubles=0;logMsg(r,`🚔 ${p.name} কারাগারে গেলেন।`,"bad");}
-function landOn(r,p){const sq=BOARD[p.pos],owner=r.ownership[p.pos];r.canBuy=false;
+function landOn(r,p){const sq=BOARD[p.pos],owner=r.ownership[p.pos];r.canBuy=false;r.landedProp=null;
   switch(sq.type){
     case"go":logMsg(r,`${p.name} শুরুতে আছেন।`,"info");break;
-    case"free":logMsg(r,`${p.name} ফ্রি পার্কিং-এ বিশ্রাম নিচ্ছেন।`,"info");break;
+    case"free":if(r.rules.vacationCash&&r.pot>0){logMsg(r,`🏝️ ${p.name} ফ্রি পার্কিং থেকে ৳${r.pot} পেলেন!`,"good");p.money+=r.pot;r.pot=0;}else logMsg(r,`${p.name} ফ্রি পার্কিং-এ বিশ্রাম নিচ্ছেন।`,"info");break;
     case"jail":logMsg(r,`${p.name} কারাগার পরিদর্শনে।`,"info");break;
     case"tax":logMsg(r,`${p.name} ${sq.n} ৳${sq.amount} দিলেন।`,"bad");debit(r,p,sq.amount);break;
     case"gotojail":goJail(r,p);break;
     case"chance":drawCard(r,p,CHANCE,"ভাগ্য");break;
     case"chest":drawCard(r,p,CHEST,"গণ তহবিল");break;
     case"prop":case"rr":case"util":
-      if(owner===undefined){if(p.money>=sq.price){r.canBuy=true;logMsg(r,`${p.name} ${sq.n}-এ নামলেন (৳${sq.price})।`,"info");}else logMsg(r,`${p.name} ${sq.n}-এ নামলেন কিন্তু কেনার টাকা নেই।`,"info");}
+      if(owner===undefined){r.landedProp=p.pos;if(p.money>=sq.price){r.canBuy=true;logMsg(r,`${p.name} ${sq.n}-এ নামলেন (৳${sq.price})।`,"info");}else logMsg(r,`${p.name} ${sq.n}-এ নামলেন কিন্তু কেনার টাকা নেই।`,"info");}
       else if(owner===idxOf(r,p))logMsg(r,`${p.name} নিজের সম্পত্তি ${sq.n}-এ আছেন।`,"info");
       else payRent(r,p,sq,r.players[owner]);break;
   }}
-function payRent(r,p,sq,owner){if(owner.jail){logMsg(r,`${owner.name} কারাগারে — ${sq.n}-এ ভাড়া নেই।`,"info");return;}let rent=0;
-  if(sq.type==="prop"){const h=r.houses[p.pos]||0;rent=sq.rent[h];if(h===0&&ownsGroup(r,owner,sq.group))rent*=2;}
+function payRent(r,p,sq,owner){if(owner.jail&&r.rules.noPrisonRent){logMsg(r,`${owner.name} কারাগারে — ${sq.n}-এ ভাড়া নেই।`,"info");return;}let rent=0;
+  if(sq.type==="prop"){const h=r.houses[p.pos]||0;rent=sq.rent[h];if(h===0&&r.rules.doubleRent&&ownsGroup(r,owner,sq.group))rent*=2;}
   else if(sq.type==="rr")rent=[0,25,50,100,200][countType(r,owner,"rr")];
   else if(sq.type==="util"){const m=countType(r,owner,"util")===2?10:4;rent=m*(r.dice[0]+r.dice[1]);}
   logMsg(r,`${p.name} ${sq.n}-এ ভাড়া ৳${rent} দিতে হবে।`,"rent");debit(r,p,rent,owner);}
@@ -354,11 +389,26 @@ function doRoll(r){const p=cur(r);if(r.phase!=="awaitRoll"||p.bankrupt)return;
   if(r.doubles===3){logMsg(r,`${p.name} পরপর ৩ ডাবল — কারাগারে!`,"bad");goJail(r,p);r.phase="awaitEnd";return;}
   advance(r,p,sum);
   if(p.bankrupt)advanceTurn(r);else r.phase="awaitEnd";}
-function doBuy(r){const p=cur(r);if(r.phase!=="awaitEnd"||!r.canBuy)return;const sq=BOARD[p.pos];if(r.ownership[p.pos]!==undefined||p.money<sq.price)return;p.money-=sq.price;r.ownership[p.pos]=idxOf(r,p);r.canBuy=false;logMsg(r,`🏠 ${p.name} ${sq.n} কিনলেন (৳${sq.price})।`,"good");}
-function doBuild(r,pos){const p=cur(r);if(p.bankrupt)return;const sq=BOARD[pos];if(!sq||sq.type!=="prop")return;if(r.ownership[pos]!==idxOf(r,p))return;if(!ownsGroup(r,p,sq.group))return;if((r.houses[pos]||0)>=5)return;if(p.money<sq.house)return;p.money-=sq.house;r.houses[pos]=(r.houses[pos]||0)+1;const lvl=r.houses[pos]===5?"হোটেল":`${r.houses[pos]} বাড়ি`;logMsg(r,`${p.name} ${sq.n}-এ নির্মাণ করলেন (${lvl})।`,"good");}
-function doSell(r,pos){const p=cur(r);const sq=BOARD[pos];if(!sq||sq.type!=="prop")return;if(r.ownership[pos]!==idxOf(r,p))return;if((r.houses[pos]||0)<=0)return;r.houses[pos]--;p.money+=Math.floor(sq.house/2);logMsg(r,`${p.name} ${sq.n}-এ বাড়ি বিক্রি করলেন।`,"info");}
+function doBuy(r){const p=cur(r);if(r.phase!=="awaitEnd"||!r.canBuy)return;const sq=BOARD[p.pos];if(r.ownership[p.pos]!==undefined||p.money<sq.price)return;p.money-=sq.price;r.ownership[p.pos]=idxOf(r,p);r.canBuy=false;r.landedProp=null;logMsg(r,`🏠 ${p.name} ${sq.n} কিনলেন (৳${sq.price})।`,"good");}
+function groupIdx(g){return BOARD.map((s,i)=>({s,i})).filter(x=>x.s.group===g).map(x=>x.i);}
+function doBuild(r,pos){const p=cur(r);if(p.bankrupt)return;const sq=BOARD[pos];if(!sq||sq.type!=="prop")return;if(r.ownership[pos]!==idxOf(r,p))return;if(!ownsGroup(r,p,sq.group))return;if((r.houses[pos]||0)>=5)return;if(p.money<sq.house)return;
+  if(r.rules.evenBuild){const min=Math.min(...groupIdx(sq.group).map(i=>r.houses[i]||0));if((r.houses[pos]||0)>min)return;}
+  p.money-=sq.house;r.houses[pos]=(r.houses[pos]||0)+1;const lvl=r.houses[pos]===5?"হোটেল":`${r.houses[pos]} বাড়ি`;logMsg(r,`${p.name} ${sq.n}-এ নির্মাণ করলেন (${lvl})।`,"good");}
+function doSell(r,pos){const p=cur(r);const sq=BOARD[pos];if(!sq||sq.type!=="prop")return;if(r.ownership[pos]!==idxOf(r,p))return;if((r.houses[pos]||0)<=0)return;
+  if(r.rules.evenBuild){const max=Math.max(...groupIdx(sq.group).map(i=>r.houses[i]||0));if((r.houses[pos]||0)<max)return;}
+  r.houses[pos]--;p.money+=Math.floor(sq.house/2);logMsg(r,`${p.name} ${sq.n}-এ বাড়ি বিক্রি করলেন।`,"info");}
 function doBail(r){const p=cur(r);if(!p.jail||r.phase!=="awaitRoll"||p.money<50)return;p.money-=50;p.jail=false;p.jailTurns=0;logMsg(r,`${p.name} ৳৫০ জামিন দিয়ে মুক্ত হলেন।`,"info");}
-function doEnd(r){const p=cur(r);if(r.phase!=="awaitEnd")return;const dbl=r.dice[0]===r.dice[1];if(dbl&&!p.jail&&!p.bankrupt&&r.doubles>0&&r.doubles<3){r.canBuy=false;r.lastCard=null;r.phase="awaitRoll";logMsg(r,`${p.name} ডাবল ফেলায় আবার চাল দেবেন।`,"info");return;}advanceTurn(r);}
+function finishTurn(r){const p=cur(r);const dbl=r.dice[0]===r.dice[1];if(dbl&&!p.jail&&!p.bankrupt&&r.doubles>0&&r.doubles<3){r.canBuy=false;r.lastCard=null;r.landedProp=null;r.phase="awaitRoll";logMsg(r,`${p.name} ডাবল ফেলায় আবার চাল দেবেন।`,"info");return;}advanceTurn(r);}
+function doEnd(r){const p=cur(r);if(r.phase!=="awaitEnd")return;if(r.rules.auction&&r.landedProp!=null&&!p.bankrupt){startAuction(r,r.landedProp);return;}finishTurn(r);}
+/* ---- auction ---- */
+function startAuction(r,pos){r.auction={pos,high:0,highBy:-1,passed:[]};r.phase="auction";r.canBuy=false;r.landedProp=null;logMsg(r,`🔨 নিলাম শুরু: ${BOARD[pos].n} (ভিত্তি ৳${BOARD[pos].price})।`,"info");autoBotAuction(r);}
+function autoBotAuction(r){if(!r.auction)return;r.players.forEach((p,i)=>{if(p.isBot&&!p.bankrupt&&!r.auction.passed.includes(i))r.auction.passed.push(i);});checkAuction(r);}
+function auctionBid(r,idx,amount){const a=r.auction;if(!a)return;const p=r.players[idx];if(!p||p.bankrupt||a.passed.includes(idx))return;amount=Math.floor(+amount||0);if(amount<=a.high||amount>p.money)return;a.high=amount;a.highBy=idx;logMsg(r,`🔨 ${p.name} ৳${amount} বিড করলেন।`,"info");checkAuction(r);}
+function auctionPass(r,idx){const a=r.auction;if(!a)return;if(!a.passed.includes(idx))a.passed.push(idx);logMsg(r,`🔨 ${r.players[idx].name} পাস করলেন।`,"info");checkAuction(r);}
+function checkAuction(r){const a=r.auction;if(!a)return;const active=r.players.map((p,i)=>i).filter(i=>!r.players[i].bankrupt);const remaining=active.filter(i=>!a.passed.includes(i));
+  if(a.high>0){if(remaining.every(i=>i===a.highBy)){const w=r.players[a.highBy];w.money-=a.high;r.ownership[a.pos]=a.highBy;logMsg(r,`🔨 ${w.name} নিলামে ${BOARD[a.pos].n} কিনলেন (৳${a.high})।`,"good");endAuction(r);}}
+  else if(remaining.length===0){logMsg(r,`🔨 কেউ বিড করেনি — ${BOARD[a.pos].n} অবিক্রীত রইলো।`,"info");endAuction(r);}}
+function endAuction(r){r.auction=null;finishTurn(r);}
 function checkWin(r){const alive=r.players.filter(p=>!p.bankrupt);if(r.started&&alive.length<=1){r.winner=alive[0]?alive[0].name:"কেউ না";r.phase="over";logMsg(r,`🏆 ${r.winner} জিতেছেন!`,"good");}}
 
 /* ---- trades ---- */
@@ -391,7 +441,7 @@ function maybeBot(r){if(!r.started||r.phase==="over")return;const p=cur(r);if(p&
 
 function publicState(r){return{type:"state",code:r.code,started:r.started,phase:r.phase,turn:r.turn,dice:r.dice,canBuy:r.canBuy,winner:r.winner,lastCard:r.lastCard,log:r.log.slice(-40),
   players:r.players.map(p=>({name:p.name,color:p.color,money:p.money,pos:p.pos,jail:p.jail,bankrupt:p.bankrupt,isBot:p.isBot,connected:p.connected})),
-  ownership:r.ownership,houses:r.houses,
+  ownership:r.ownership,houses:r.houses,rules:r.rules,pot:r.pot,auction:r.auction,
   trades:r.trades.map(t=>({id:t.id,from:t.from,to:t.to,give:t.give,want:t.want})),
   votes:Object.fromEntries(Object.entries(r.votes).map(([k,v])=>[k,v.length]))};}
 
@@ -409,9 +459,10 @@ function nameVal(){return(document.getElementById("nameInput").value||"খেল
 function setErr(id,m){document.getElementById(id).textContent=m||"";}
 function connBanner(t){const el=document.getElementById("conn");if(!t)el.style.display="none";else{el.style.display="block";el.textContent=t;}}
 function randCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let c="";for(let i=0;i<5;i++)c+=A[Math.floor(Math.random()*A.length)];return c;}
-function newRoom(code){return{code,players:[],ownership:{},houses:{},turn:0,dice:[1,1],doubles:0,started:false,winner:null,phase:"lobby",canBuy:false,lastCard:null,log:[],hostClient:null,botTimer:null,trades:[],tradeSeq:1,votes:{}};}
+const DEFAULT_RULES={maxPlayers:6,startCash:1500,allowBots:true,doubleRent:true,vacationCash:false,auction:true,evenBuild:true,noPrisonRent:true};
+function newRoom(code){return{code,players:[],ownership:{},houses:{},turn:0,dice:[1,1],doubles:0,started:false,winner:null,phase:"lobby",canBuy:false,lastCard:null,log:[],hostClient:null,botTimer:null,trades:[],tradeSeq:1,votes:{},rules:{...DEFAULT_RULES},pot:0,auction:null,landedProp:null};}
 function freeColor(r,pref){const used=r.players.map(p=>p.color);if(pref&&!used.includes(pref))return pref;return PALETTE.find(c=>!used.includes(c))||PALETTE[r.players.length%PALETTE.length];}
-function mkPlayer(r,cid,name,isBot,color){return{clientId:cid,name,color:freeColor(r,color),money:1500,pos:0,jail:false,jailTurns:0,bankrupt:false,isBot,connected:true};}
+function mkPlayer(r,cid,name,isBot,color){return{clientId:cid,name,color:freeColor(r,color),money:(r.rules?r.rules.startCash:1500),pos:0,jail:false,jailTurns:0,bankrupt:false,isBot,connected:true};}
 
 /* ---- HOST ---- */
 function hostCreate(){NET.isHost=true;IS_HOST=true;NET.name=nameVal();const code=randCode();connBanner("সংযোগ তৈরি হচ্ছে…");
@@ -425,16 +476,19 @@ function hostOnData(conn,msg){if(!room)return;
   if(msg.type==="join"){const ex=room.players.findIndex(p=>p.clientId===msg.clientId);
     if(ex>=0){room.players[ex].connected=true;conn.playerIndex=ex;conn.clientId=msg.clientId;conn.send({type:"welcome",you:ex});hostBroadcast();maybeBot(room);return;}
     if(room.started){conn.send({type:"error",message:"খেলা ইতিমধ্যে শুরু হয়েছে।"});return;}
-    if(room.players.length>=6){conn.send({type:"error",message:"রুম পূর্ণ (সর্বোচ্চ ৬ জন)।"});return;}
+    if(room.players.length>=room.rules.maxPlayers){conn.send({type:"error",message:"রুম পূর্ণ।"});return;}
     const idx=room.players.length;room.players.push(mkPlayer(room,msg.clientId,(msg.name||"খেলোয়াড়").slice(0,16),false,msg.color));
     conn.playerIndex=idx;conn.clientId=msg.clientId;logMsg(room,`${room.players[idx].name} রুমে যোগ দিলেন।`,"info");conn.send({type:"welcome",you:idx});hostBroadcast();return;}
   hostHandle(msg.clientId||conn.clientId,msg);}
 function hostHandle(cid,msg){if(!room)return;const pidx=room.players.findIndex(p=>p.clientId===cid);
   const turnOk=()=>room.started&&room.phase!=="over"&&pidx===room.turn&&!room.players[room.turn].bankrupt;
   switch(msg.type){
-    case"start":if(cid===room.hostClient&&!room.started&&room.players.length>=2){room.started=true;room.phase="awaitRoll";room.turn=0;logMsg(room,`🎲 খেলা শুরু! ${cur(room).name}-এর পালা।`,"good");hostBroadcast();maybeBot(room);}break;
-    case"addBot":if(cid===room.hostClient&&!room.started&&room.players.length<6){const bi=room.players.filter(p=>p.isBot).length;room.players.push(mkPlayer(room,"bot-"+Math.random().toString(36).slice(2),BOT_NAMES[bi]||("রোবট-"+(bi+1)),true));logMsg(room,`একটি বট যোগ হলো।`,"info");hostBroadcast();}break;
+    case"start":if(cid===room.hostClient&&!room.started&&room.players.length>=2){room.players.forEach(p=>p.money=room.rules.startCash);room.started=true;room.phase="awaitRoll";room.turn=0;logMsg(room,`🎲 খেলা শুরু! ${cur(room).name}-এর পালা।`,"good");hostBroadcast();maybeBot(room);}break;
+    case"addBot":if(cid===room.hostClient&&!room.started&&room.rules.allowBots&&room.players.length<room.rules.maxPlayers){const bi=room.players.filter(p=>p.isBot).length;room.players.push(mkPlayer(room,"bot-"+Math.random().toString(36).slice(2),BOT_NAMES[bi]||("রোবট-"+(bi+1)),true));logMsg(room,`একটি বট যোগ হলো।`,"info");hostBroadcast();}break;
     case"removeBot":if(cid===room.hostClient&&!room.started){for(let i=room.players.length-1;i>=0;i--){if(room.players[i].isBot){room.players.splice(i,1);break;}}hostBroadcast();}break;
+    case"setRule":if(cid===room.hostClient&&!room.started&&room.rules.hasOwnProperty(msg.key)){const k=msg.key,v=msg.value;if(k==="maxPlayers")room.rules.maxPlayers=Math.max(Math.max(2,room.players.length),Math.min(6,+v||6));else if(k==="startCash")room.rules.startCash=[1000,1500,2000,2500].includes(+v)?+v:1500;else room.rules[k]=!!v;if(k==="startCash")room.players.forEach(p=>{if(!room.started)p.money=room.rules.startCash;});hostBroadcast();}break;
+    case"bid":if(pidx>=0&&room.phase==="auction"){auctionBid(room,pidx,msg.amount);hostBroadcast();maybeBot(room);}break;
+    case"pass":if(pidx>=0&&room.phase==="auction"){auctionPass(room,pidx);hostBroadcast();maybeBot(room);}break;
     case"roll":if(turnOk()){doRoll(room);hostBroadcast();maybeBot(room);}break;
     case"buy":if(turnOk()){doBuy(room);hostBroadcast();}break;
     case"build":if(turnOk()){doBuild(room,msg.pos);hostBroadcast();}break;
@@ -504,10 +558,31 @@ function render(){if(!S)return;if(S.started||S.phase==="over"){if(document.getEl
 
 function renderWaiting(){const box=document.getElementById("wPlayers");box.innerHTML="";
   S.players.forEach(p=>{const d=document.createElement("div");d.className="pl";d.innerHTML=`${miniAv(p.color)}<div>${p.name}</div>`+(p.isBot?`<span class="tag">বট</span>`:"");box.appendChild(d);});
+  renderSettings();
   document.getElementById("hostControls").style.display=IS_HOST?"flex":"none";
   document.getElementById("startBtn").style.display=IS_HOST?"block":"none";
   document.getElementById("startBtn").disabled=S.players.length<2;
   document.getElementById("waitNote").style.display=IS_HOST?"none":"block";}
+const RULE_META={
+  doubleRent:{i:"💰",t:"সম্পূর্ণ সেটে দ্বিগুণ ভাড়া",d:"এক রঙের সব সম্পত্তি থাকলে বেস ভাড়া দ্বিগুণ হবে"},
+  vacationCash:{i:"🏝️",t:"ফ্রি পার্কিং বোনাস",d:"সব কর ও জরিমানা জমা হয়ে ফ্রি পার্কিং-এ নামলে পাওয়া যাবে"},
+  auction:{i:"🔨",t:"নিলাম",d:"কেউ সম্পত্তি না কিনলে সেটি সর্বোচ্চ দরদাতার কাছে নিলামে বিক্রি হবে"},
+  evenBuild:{i:"🏘️",t:"সমান নির্মাণ",d:"এক সেটের সব সম্পত্তিতে সমানভাবে বাড়ি বানাতে হবে"},
+  noPrisonRent:{i:"🔒",t:"কারাগারে ভাড়া বন্ধ",d:"মালিক কারাগারে থাকলে তার সম্পত্তিতে ভাড়া আদায় হবে না"},
+};
+function setRowToggle(i,t,d,key,val,host){return `<div class="setrow"><span class="si">${i}</span><span class="sl"><b>${t}</b><small>${d}</small></span><div class="sw-tog ${val?"on":""} ${host?"":"locked"}" data-tog="${key}"></div></div>`;}
+function setRowSelect(i,t,d,key,val,opts,host,isTaka){const o=opts.map(v=>`<option value="${v}" ${v===val?"selected":""}>${isTaka?"৳"+toBn(v):toBn(v)}</option>`).join("");return `<div class="setrow"><span class="si">${i}</span><span class="sl"><b>${t}</b><small>${d}</small></span><select data-sel="${key}" ${host?"":"disabled"}>${o}</select></div>`;}
+function renderSettings(){const box=document.getElementById("settingsPanel");if(!S.rules){box.innerHTML="";return;}const host=IS_HOST,r=S.rules;
+  let h=`<div class="setgrp">গেম সেটিংস</div>`;
+  h+=setRowSelect("👥","সর্বোচ্চ খেলোয়াড়","কতজন খেলতে পারবে","maxPlayers",r.maxPlayers,[2,3,4,5,6],host);
+  h+=setRowSelect("💵","শুরুর টাকা","প্রত্যেকে যত টাকা নিয়ে শুরু করবে","startCash",r.startCash,[1000,1500,2000,2500],host,true);
+  h+=setRowToggle("🤖","বট যোগ করা যাবে","কম্পিউটার খেলোয়াড় অনুমোদন","allowBots",r.allowBots,host);
+  h+=`<div class="setgrp">গেমপ্লে নিয়ম</div>`;
+  ["doubleRent","vacationCash","auction","evenBuild","noPrisonRent"].forEach(k=>{const m=RULE_META[k];h+=setRowToggle(m.i,m.t,m.d,k,r[k],host);});
+  box.innerHTML=h;
+  if(!host)return;
+  box.querySelectorAll("[data-tog]").forEach(el=>{el.onclick=()=>act({type:"setRule",key:el.dataset.tog,value:!el.classList.contains("on")});});
+  box.querySelectorAll("[data-sel]").forEach(el=>{el.onchange=()=>act({type:"setRule",key:el.dataset.sel,value:+el.value});});}
 function miniAv(c){return `<span class="miniav"><span class="face" style="--c:${c};position:relative;display:inline-flex"><span class="eye l"></span><span class="eye r"></span></span></span>`;}
 
 /* board */
@@ -554,13 +629,14 @@ function renderGame(){
   renderTokens();
   const dkey=S.dice.join("-")+"/"+S.turn+"/"+S.phase;if(dkey!==lastDice){drawDice(true);lastDice=dkey;}
   const logEl=document.getElementById("log");logEl.innerHTML="";S.log.slice().reverse().forEach(l=>{const d=document.createElement("div");d.className=l.cls;d.textContent=l.text;logEl.appendChild(d);});
-  renderMyProps();renderTrades();
+  renderMyProps();renderTrades();renderAuction();
   const me=S.turn===YOU,p=S.players[S.turn];
   document.getElementById("youare").textContent=S.winner?"":(me?"আপনার পালা!":`${p.name}-এর পালা…`);
   const iAmOut=YOU<0||!S.players[YOU]||S.players[YOU].bankrupt;
   if(S.winner){document.getElementById("status").innerHTML=`🏆 <b>${S.winner}</b> জিতেছেন!`;["rollBtn","buyBtn","endBtn","buildBtn","bailBtn","tradeBtn","votekickBtn","bankruptBtn"].forEach(id=>document.getElementById(id).disabled=true);}
   else{const sq=BOARD[p.pos];let st="";
-    if(S.phase==="awaitRoll")st=me?(p.jail?"কারাগারে — ছক্কা ফেলুন বা জামিন দিন।":"ছক্কা ফেলুন।"):`${p.name}-এর পালা…`;
+    if(S.phase==="auction")st="🔨 নিলাম চলছে…";
+    else if(S.phase==="awaitRoll")st=me?(p.jail?"কারাগারে — ছক্কা ফেলুন বা জামিন দিন।":"ছক্কা ফেলুন।"):`${p.name}-এর পালা…`;
     else if(S.phase==="awaitEnd")st=me?(S.canBuy?`${sq.n} কিনবেন ${taka(sq.price)}?`:"পালা শেষ করুন বা নির্মাণ করুন।"):`${p.name}-এর পালা…`;
     document.getElementById("status").textContent=st;
     document.getElementById("rollBtn").disabled=!(me&&S.phase==="awaitRoll");
@@ -635,6 +711,15 @@ function openTrade(){const others=S.players.map((p,i)=>({p,i})).filter(x=>x.i!==
     act({type:"trade",to,give,want});document.getElementById("tradepop").classList.remove("show");};
   document.getElementById("tradepop").classList.add("show");}
 
+/* auction */
+function renderAuction(){const pop=document.getElementById("auctionpop");if(!S.auction||S.phase!=="auction"){pop.classList.remove("show");return;}
+  const a=S.auction,box=document.getElementById("auctionBox");const meActive=YOU>=0&&S.players[YOU]&&!S.players[YOU].bankrupt&&!a.passed.includes(YOU);
+  const highName=a.highBy>=0?S.players[a.highBy].name:"—",base=BOARD[a.pos].price,minBid=a.high+10;
+  let h=`<h3>🔨 নিলাম</h3><div class="aucprop">${BOARD[a.pos].n}</div><div style="color:#889;font-size:12px">ভিত্তি মূল্য ৳${toBn(base)}</div><div class="auchigh">সর্বোচ্চ বিড: <b>${a.high?taka(a.high):"নেই"}</b>${a.highBy>=0?` — ${highName}`:""}</div>`;
+  if(meActive){const def=Math.min(S.players[YOU].money,Math.max(minBid,Math.floor(base/2)));h+=`<div class="aucrow"><input id="bidAmt" type="number" min="${minBid}" value="${def}"><button class="gbtn" id="bidBtn">বিড</button></div><button class="gbtn sec" id="passBtn" style="margin-top:8px;width:100%">পাস</button>`;}
+  else h+=`<div style="margin-top:12px;color:#889">${a.passed.includes(YOU)?"আপনি পাস করেছেন — অপেক্ষা করুন।":"অপেক্ষা করছি…"}</div>`;
+  box.innerHTML=h;pop.classList.add("show");
+  if(meActive){document.getElementById("bidBtn").onclick=()=>act({type:"bid",amount:+document.getElementById("bidAmt").value});document.getElementById("passBtn").onclick=()=>act({type:"pass"});}}
 /* votekick */
 function openVote(){const box=document.getElementById("voteList");box.innerHTML="";const others=S.players.map((p,i)=>({p,i})).filter(x=>x.i!==YOU&&!x.p.bankrupt);
   if(!others.length){box.innerHTML='<div class="empty">কেউ নেই।</div>';}
