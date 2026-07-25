@@ -62,11 +62,13 @@
   .cell.own{box-shadow:inset 0 0 0 2px var(--own);}
   .cell.here{outline:2px solid var(--gold);outline-offset:-2px;box-shadow:inset 0 0 0 2px rgba(244,197,66,.6);}
   /* Left/right column tiles: rotate the whole square 90° so the city name (and
-     price band) run vertically like richup. Icons are counter-rotated to stay upright. */
-  .cell.left{transform:rotate(-90deg);}
-  .cell.right{transform:rotate(90deg);}
-  .cell.left .ic,.cell.left .houses{transform:rotate(90deg);}
-  .cell.right .ic,.cell.right .houses{transform:rotate(-90deg);}
+     price band) run vertically. Rotated so the text is BOARD-FACING — the top of
+     the letters points toward the board centre (right col tilts left, left col
+     tilts right). Icons are counter-rotated to stay upright. */
+  .cell.left{transform:rotate(90deg);}
+  .cell.right{transform:rotate(-90deg);}
+  .cell.left .ic,.cell.left .houses{transform:rotate(-90deg);}
+  .cell.right .ic,.cell.right .houses{transform:rotate(90deg);}
   .cell .ic{font-size:calc(var(--cell)*.3);line-height:1;text-align:center;margin-top:3px;}
   .cell .ic.big{font-size:calc(var(--cell)*.52);margin-top:14%;}
   #center{grid-column:2/11;grid-row:2/11;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:12px;}
