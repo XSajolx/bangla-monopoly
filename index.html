@@ -61,6 +61,14 @@
   .corner{align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:calc(var(--cell)*.15);background:linear-gradient(180deg,#221d3e,#191634);}
   .cell.own{box-shadow:inset 0 0 0 2px var(--own);}
   .cell.here{outline:2px solid var(--gold);outline-offset:-2px;box-shadow:inset 0 0 0 2px rgba(244,197,66,.6);}
+  /* Left/right column tiles: rotate the whole square 90° so the city name (and
+     price band) run vertically like richup. Icons are counter-rotated to stay upright. */
+  .cell.left{transform:rotate(-90deg);}
+  .cell.right{transform:rotate(90deg);}
+  .cell.left .ic,.cell.left .houses{transform:rotate(90deg);}
+  .cell.right .ic,.cell.right .houses{transform:rotate(-90deg);}
+  .cell .ic{font-size:calc(var(--cell)*.3);line-height:1;text-align:center;margin-top:3px;}
+  .cell .ic.big{font-size:calc(var(--cell)*.52);margin-top:14%;}
   #center{grid-column:2/11;grid-row:2/11;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:12px;}
   #logo{font-size:calc(var(--cell)*.52);font-weight:700;color:#34d399;text-align:center;line-height:1.08;letter-spacing:.5px;text-shadow:0 2px 16px rgba(52,211,153,.28);}
   #logo b{color:#f87171;text-shadow:0 2px 16px rgba(248,113,113,.28);}
@@ -692,17 +700,20 @@ const cellEls=[];let tokenLayer=null,tokenEls={},renderedPos={},animSeq={};
 function gridPos(i){if(i<=10)return{r:1,c:1+i};if(i<=20)return{r:1+(i-10),c:11};if(i<=30)return{r:11,c:11-(i-20)};return{r:11-(i-30),c:1};}
 function buildBoardDOM(){const bd=document.getElementById("board");bd.innerHTML="";cellEls.length=0;tokenEls={};renderedPos={};animSeq={};
   const center=document.createElement("div");center.id="center";center.innerHTML=`<div class="midflag">🇧🇩</div><div id="logo">ঢাকা<br><b>মনোপলি</b></div><div id="dice"><div class="die"></div><div class="die"></div></div>`;bd.appendChild(center);
-  BOARD.forEach((sq,i)=>{const el=document.createElement("div");const gp=gridPos(i);el.style.gridRow=gp.r;el.style.gridColumn=gp.c;el.className="cell "+sq.type+(i%10===0?" corner":"");el.innerHTML=cellHTML(sq);bd.appendChild(el);cellEls[i]=el;});
+  BOARD.forEach((sq,i)=>{const el=document.createElement("div");const gp=gridPos(i);el.style.gridRow=gp.r;el.style.gridColumn=gp.c;
+    let cls="cell "+sq.type;
+    if(i%10===0)cls+=" corner";else if(i<10)cls+=" top";else if(i<20)cls+=" right";else if(i<30)cls+=" bottom";else cls+=" left";
+    el.className=cls;el.innerHTML=cellHTML(sq);bd.appendChild(el);cellEls[i]=el;});
   tokenLayer=document.createElement("div");tokenLayer.id="tokenLayer";bd.appendChild(tokenLayer);drawDice();}
 function cellHTML(sq){
   // Ownable tiles carry an empty band that only fills — with the OWNER's color —
   // once someone buys the property (see renderGame). No group colors on the board.
   if(sq.type==="prop")return `<div class="bar"></div><div class="nm">${sq.n}</div><div class="pr">${taka(sq.price)}</div>`;
-  if(sq.type==="rr")return `<div class="bar"></div><div class="nm">🚉<br>${sq.n}</div><div class="pr">${taka(200)}</div>`;
-  if(sq.type==="util")return `<div class="bar"></div><div class="nm">${sq.n.includes("বিদ্যুৎ")?"💡":"🚰"}<br>${sq.n}</div><div class="pr">${taka(150)}</div>`;
-  if(sq.type==="tax")return `<div class="nm">💰<br>${sq.n}</div><div class="pr">${taka(sq.amount)}</div>`;
-  if(sq.type==="chance")return `<div class="nm" style="margin-top:20%;font-size:1.6em">❓</div><div class="nm">${sq.n}</div>`;
-  if(sq.type==="chest")return `<div class="nm" style="margin-top:20%;font-size:1.6em">📦</div><div class="nm">${sq.n}</div>`;
+  if(sq.type==="rr")return `<div class="bar"></div><div class="ic">🚉</div><div class="nm">${sq.n}</div><div class="pr">${taka(200)}</div>`;
+  if(sq.type==="util")return `<div class="bar"></div><div class="ic">${sq.n.includes("বিদ্যুৎ")?"💡":"🚰"}</div><div class="nm">${sq.n}</div><div class="pr">${taka(150)}</div>`;
+  if(sq.type==="tax")return `<div class="ic">💰</div><div class="nm">${sq.n}</div><div class="pr">${taka(sq.amount)}</div>`;
+  if(sq.type==="chance")return `<div class="ic big">❓</div><div class="nm">${sq.n}</div>`;
+  if(sq.type==="chest")return `<div class="ic big">📦</div><div class="nm">${sq.n}</div>`;
   if(sq.type==="go")return `<div style="text-align:center">➡️<br>শুরু<br>${taka(200)}</div>`;
   if(sq.type==="jail")return `<div style="text-align:center">🔒<br>কারাগার</div>`;
   if(sq.type==="free")return `<div style="text-align:center">🅿️<br>ফ্রি<br>পার্কিং</div>`;
