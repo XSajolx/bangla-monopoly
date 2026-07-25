@@ -56,7 +56,8 @@
   .cell.prop:hover{filter:brightness(1.14);}
   .cell .nm{font-weight:600;text-align:center;margin-top:2px;word-break:break-word;letter-spacing:.2px;}
   .cell .pr{text-align:center;margin-top:auto;font-weight:700;font-size:calc(var(--cell)*.135);color:var(--muted);}
-  .cell .bar{height:calc(var(--cell)*.26);width:100%;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -2px 3px rgba(0,0,0,.28);}
+  .cell .bar{height:calc(var(--cell)*.24);width:100%;background:transparent;transition:background .2s;}
+  .cell .bar.filled{box-shadow:inset 0 1px 0 rgba(255,255,255,.3),inset 0 -2px 3px rgba(0,0,0,.3);}
   .corner{align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:calc(var(--cell)*.15);background:linear-gradient(180deg,#221d3e,#191634);}
   .cell.own{box-shadow:inset 0 0 0 2px var(--own);}
   .cell.here{outline:2px solid var(--gold);outline-offset:-2px;box-shadow:inset 0 0 0 2px rgba(244,197,66,.6);}
@@ -109,6 +110,8 @@
   .prow .nm{font-weight:600;font-size:14px;}
   .prow .money{font-weight:700;color:#40d47e;font-size:14px;}
   .prow .badge{font-size:10px;background:#000;color:#ffcc55;padding:1px 5px;border-radius:5px;}
+  .prow .badge.disc{background:#3a2405;color:#ffb454;font-variant-numeric:tabular-nums;animation:discpulse 1.4s ease-in-out infinite;}
+  @keyframes discpulse{0%,100%{opacity:1}50%{opacity:.5}}
   .prow .off{width:7px;height:7px;border-radius:50%;background:#e74c3c;}
   .prow .on{width:7px;height:7px;border-radius:50%;background:#40d47e;}
   #status{text-align:center;font-size:14px;color:#cdd;min-height:20px;margin:2px 0;}
@@ -452,7 +455,8 @@ function botBuild(r,p){BOARD.forEach((s,i)=>{if(s.type==="prop"&&r.ownership[i]=
 function maybeBot(r){if(!r.started||r.phase==="over")return;const p=cur(r);if(p&&p.isBot&&!p.bankrupt)scheduleBot(r);}
 
 function publicState(r){return{type:"state",code:r.code,started:r.started,phase:r.phase,turn:r.turn,dice:r.dice,canBuy:r.canBuy,winner:r.winner,lastCard:r.lastCard,log:r.log.slice(-40),
-  players:r.players.map(p=>({name:p.name,color:p.color,money:p.money,pos:p.pos,jail:p.jail,bankrupt:p.bankrupt,isBot:p.isBot,connected:p.connected})),
+  players:r.players.map(p=>({name:p.name,color:p.color,money:p.money,pos:p.pos,jail:p.jail,bankrupt:p.bankrupt,isBot:p.isBot,connected:p.connected,
+    discLeft:(!p.isBot&&!p.bankrupt&&!p.connected&&p.discAt)?Math.max(0,Math.ceil((GRACE_MS-(Date.now()-p.discAt))/1000)):null})),
   ownership:r.ownership,houses:r.houses,rules:r.rules,pot:r.pot,auction:r.auction,
   trades:r.trades.map(t=>({id:t.id,from:t.from,to:t.to,give:t.give,want:t.want})),
   votes:Object.fromEntries(Object.entries(r.votes).map(([k,v])=>[k,v.length]))};}
@@ -461,11 +465,30 @@ function publicState(r){return{type:"state",code:r.code,started:r.started,phase:
    NETWORK (PeerJS)
    ============================================================ */
 const PEER_PREFIX="dhakamono-";
-const PEER_OPTS={config:{iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:global.stun.twilio.com:3478"}]}};
+/* STUN for direct P2P + free TURN relay fallback so players behind stricter
+   NATs (mobile data, office/school Wi-Fi) can still connect — needed for up
+   to 6 players to reliably join by link, not just those on friendly networks. */
+const PEER_OPTS={config:{iceServers:[
+  {urls:"stun:stun.l.google.com:19302"},
+  {urls:"stun:global.stun.twilio.com:3478"},
+  {urls:"turn:openrelay.metered.ca:80",username:"openrelayproject",credential:"openrelayproject"},
+  {urls:"turn:openrelay.metered.ca:443",username:"openrelayproject",credential:"openrelayproject"},
+  {urls:"turn:openrelay.metered.ca:443?transport=tcp",username:"openrelayproject",credential:"openrelayproject"},
+]}};
 let clientId=localStorage.getItem("bm_cid");
 if(!clientId){clientId="c-"+Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem("bm_cid",clientId);}
-const NET={isHost:false,peer:null,conns:[],hostConn:null,code:null,name:"",color:PALETTE[0]};
+const NET={isHost:false,peer:null,conns:[],hostConn:null,code:null,name:"",color:PALETTE[0],rejoining:false,retryPending:false};
 let S=null,YOU=-1,IS_HOST=false,lastCardShown=null,lastDice="";
+
+/* ---- reconnection / grace-period persistence ---- */
+const GRACE_MS=180000;      // 3-minute window to get back after a disconnect
+const SESSION_TTL=1800000;  // 30 min: how long a saved session stays auto-rejoinable
+let graceTimer=null,guestRetry=0;
+function saveSession(){if(!NET.code)return;try{localStorage.setItem("bm_session",JSON.stringify({code:NET.code,name:NET.name,color:NET.color,isHost:NET.isHost,ts:Date.now()}));}catch(e){}}
+function saveHostState(){if(!NET.isHost||!room)return;try{const snap={...room,botTimer:null};localStorage.setItem("bm_hoststate",JSON.stringify({code:room.code,ts:Date.now(),room:snap}));}catch(e){}}
+function clearSession(){try{localStorage.removeItem("bm_session");localStorage.removeItem("bm_hoststate");}catch(e){}}
+function sessionActive(code){let s=null;try{s=JSON.parse(localStorage.getItem("bm_session")||"null");}catch(e){}return!!(s&&s.code===code&&Date.now()-s.ts<SESSION_TTL);}
+function fmtClock(sec){sec=Math.max(0,sec|0);return toBn(Math.floor(sec/60))+":"+toBn(String(sec%60).padStart(2,"0"));}
 
 function nameVal(){return(document.getElementById("nameInput").value||"খেলোয়াড়").trim();}
 function setErr(id,m){document.getElementById(id).textContent=m||"";}
@@ -477,16 +500,49 @@ function freeColor(r,pref){const used=r.players.map(p=>p.color);if(pref&&!used.i
 function mkPlayer(r,cid,name,isBot,color){return{clientId:cid,name,color:freeColor(r,color),money:(r.rules?r.rules.startCash:1500),pos:0,jail:false,jailTurns:0,bankrupt:false,isBot,connected:true};}
 
 /* ---- HOST ---- */
-function hostCreate(){NET.isHost=true;IS_HOST=true;NET.name=nameVal();const code=randCode();connBanner("সংযোগ তৈরি হচ্ছে…");
+function hostCreate(){NET.isHost=true;IS_HOST=true;NET.name=nameVal();connBanner("সংযোগ তৈরি হচ্ছে…");startHostPeer(randCode(),null,0);}
+/* Rebuild the authoritative game from the locally-saved snapshot after the host
+   reloads / recovers from a net drop. Reclaims the same room-code peer id (may
+   take a few retries while the broker releases the old registration); guests
+   auto-reconnect on their own once the host is back. */
+function hostResume(code){let hs=null;try{hs=JSON.parse(localStorage.getItem("bm_hoststate")||"null");}catch(e){}
+  if(!hs||hs.code!==code||!hs.room){clearSession();return false;}
+  NET.isHost=true;IS_HOST=true;startHostPeer(code,hs.room,0);return true;}
+function startHostPeer(code,resumeRoom,attempt){attempt=attempt||0;
+  try{if(NET.peer)NET.peer.destroy();}catch(e){}
   NET.peer=new Peer(PEER_PREFIX+code,PEER_OPTS);
-  NET.peer.on("open",()=>{NET.code=code;connBanner(null);room=newRoom(code);room.hostClient=clientId;
-    room.players.push(mkPlayer(room,clientId,NET.name,false,NET.color));logMsg(room,`${NET.name} রুম তৈরি করলেন।`,"info");YOU=0;showWaiting();hostBroadcast();});
+  NET.peer.on("open",()=>{NET.code=code;connBanner(null);
+    if(resumeRoom){room=resumeRoom;room.botTimer=null;room.code=code;room.hostClient=clientId;
+      room.players.forEach(p=>{if(!p.isBot&&p.clientId!==clientId){p.connected=false;if(room.started&&!p.bankrupt)p.discAt=Date.now();}});
+      YOU=room.players.findIndex(p=>p.clientId===clientId);if(YOU<0)YOU=0;
+      logMsg(room,`🔌 হোস্ট আবার যুক্ত হলো — খেলা চালু আছে।`,"good");
+      if(room.started)showGame();else showWaiting();
+      saveSession();hostBroadcast();startGraceLoop();maybeBot(room);
+    }else{room=newRoom(code);room.hostClient=clientId;
+      room.players.push(mkPlayer(room,clientId,NET.name,false,NET.color));logMsg(room,`${NET.name} রুম তৈরি করলেন।`,"info");YOU=0;saveSession();showWaiting();hostBroadcast();}});
   NET.peer.on("connection",conn=>hostOnConn(conn));
-  NET.peer.on("error",e=>{if(String(e).includes("is taken")){NET.peer.destroy();return hostCreate();}setErr("lobbyErr","সংযোগ ত্রুটি: "+e.type);connBanner(null);});}
-function hostOnConn(conn){NET.conns.push(conn);conn.on("data",msg=>hostOnData(conn,msg));conn.on("close",()=>{const p=room&&room.players[conn.playerIndex];if(p)p.connected=false;hostBroadcast();});conn.on("error",()=>{});}
+  NET.peer.on("error",e=>{const taken=String(e).includes("is taken")||e.type==="unavailable-id";
+    try{NET.peer.destroy();}catch(_){}
+    /* When recovering a saved game, keep retrying through ANY transient failure —
+       the room-code id still being held, OR the public PeerJS broker being briefly
+       down (520/network) — because our authoritative state is safe locally and we
+       just need the broker back to reclaim the code. */
+    if(resumeRoom){if(attempt<40){connBanner("🔌 খেলা ফিরিয়ে আনছি… "+toBn(attempt+1));return setTimeout(()=>startHostPeer(code,resumeRoom,attempt+1),2000);}
+      connBanner(null);setErr("lobbyErr","পুনঃসংযোগ ব্যর্থ — ইন্টারনেট বা সার্ভার সমস্যা। একটু পরে চেষ্টা করুন।");return;}
+    if(taken)return startHostPeer(randCode(),null,0);
+    setErr("lobbyErr","সংযোগ ত্রুটি: "+e.type);connBanner(null);});}
+function hostOnConn(conn){NET.conns.push(conn);conn.on("data",msg=>hostOnData(conn,msg));conn.on("close",()=>{const p=room&&room.players[conn.playerIndex];if(p){p.connected=false;if(room.started&&!p.bankrupt&&!p.isBot)p.discAt=Date.now();}hostBroadcast();});conn.on("error",()=>{});}
+/* grace loop: while any human is disconnected, tick the countdown to all
+   clients; when a player's 3-minute window expires, auto-bankrupt them so the
+   game isn't frozen waiting on someone who isn't coming back. */
+function startGraceLoop(){if(graceTimer||!NET.isHost)return;graceTimer=setInterval(graceTick,1000);}
+function graceTick(){if(!room||!room.started||room.phase==="over")return;const now=Date.now();let dirty=false,anyDisc=false;
+  room.players.forEach((p,i)=>{if(p.isBot||p.bankrupt||p.connected||!p.discAt)return;anyDisc=true;
+    if(now-p.discAt>=GRACE_MS){p.discAt=null;logMsg(room,`⏳ ${p.name} ৩ মিনিটে ফিরে না আসায় দেউলিয়া হলেন।`,"bad");bankruptPlayer(room,i,null,false);dirty=true;}});
+  if(dirty||anyDisc)hostBroadcast();}
 function hostOnData(conn,msg){if(!room)return;
   if(msg.type==="join"){const ex=room.players.findIndex(p=>p.clientId===msg.clientId);
-    if(ex>=0){room.players[ex].connected=true;conn.playerIndex=ex;conn.clientId=msg.clientId;conn.send({type:"welcome",you:ex});hostBroadcast();maybeBot(room);return;}
+    if(ex>=0){const pl=room.players[ex];const wasOut=!pl.connected;pl.connected=true;pl.discAt=null;conn.playerIndex=ex;conn.clientId=msg.clientId;if(wasOut&&room.started)logMsg(room,`🔌 ${pl.name} আবার সংযুক্ত হলেন।`,"good");conn.send({type:"welcome",you:ex});hostBroadcast();maybeBot(room);return;}
     if(room.started){conn.send({type:"error",message:"খেলা ইতিমধ্যে শুরু হয়েছে।"});return;}
     if(room.players.length>=room.rules.maxPlayers){conn.send({type:"error",message:"রুম পূর্ণ।"});return;}
     const idx=room.players.length;room.players.push(mkPlayer(room,msg.clientId,(msg.name||"খেলোয়াড়").slice(0,16),false,msg.color));
@@ -495,7 +551,7 @@ function hostOnData(conn,msg){if(!room)return;
 function hostHandle(cid,msg){if(!room)return;const pidx=room.players.findIndex(p=>p.clientId===cid);
   const turnOk=()=>room.started&&room.phase!=="over"&&pidx===room.turn&&!room.players[room.turn].bankrupt;
   switch(msg.type){
-    case"start":if(cid===room.hostClient&&!room.started&&room.players.length>=2){room.players.forEach(p=>p.money=room.rules.startCash);room.started=true;room.phase="awaitRoll";room.turn=0;logMsg(room,`🎲 খেলা শুরু! ${cur(room).name}-এর পালা।`,"good");hostBroadcast();maybeBot(room);}break;
+    case"start":if(cid===room.hostClient&&!room.started&&room.players.length>=2){room.players.forEach(p=>p.money=room.rules.startCash);room.started=true;room.phase="awaitRoll";room.turn=0;logMsg(room,`🎲 খেলা শুরু! ${cur(room).name}-এর পালা।`,"good");hostBroadcast();startGraceLoop();maybeBot(room);}break;
     case"addBot":if(cid===room.hostClient&&!room.started&&room.rules.allowBots&&room.players.length<room.rules.maxPlayers){const bi=room.players.filter(p=>p.isBot).length;room.players.push(mkPlayer(room,"bot-"+Math.random().toString(36).slice(2),BOT_NAMES[bi]||("রোবট-"+(bi+1)),true));logMsg(room,`একটি বট যোগ হলো।`,"info");hostBroadcast();}break;
     case"removeBot":if(cid===room.hostClient&&!room.started){for(let i=room.players.length-1;i>=0;i--){if(room.players[i].isBot){room.players.splice(i,1);break;}}hostBroadcast();}break;
     case"setRule":if(cid===room.hostClient&&!room.started&&room.rules.hasOwnProperty(msg.key)){const k=msg.key,v=msg.value;if(k==="maxPlayers")room.rules.maxPlayers=Math.max(Math.max(2,room.players.length),Math.min(6,+v||6));else if(k==="startCash")room.rules.startCash=[1000,1500,2000,2500].includes(+v)?+v:1500;else room.rules[k]=!!v;if(k==="startCash")room.players.forEach(p=>{if(!room.started)p.money=room.rules.startCash;});hostBroadcast();}break;
@@ -515,19 +571,35 @@ function hostHandle(cid,msg){if(!room)return;const pidx=room.players.findIndex(p
     case"leave":if(pidx>=0){const p=room.players[pidx];p.connected=false;if(room.started)bankruptPlayer(room,pidx,null,false);else{room.players.splice(pidx,1);room.players.forEach((x,i)=>x._i=i);}logMsg(room,`${p.name} খেলা ছেড়ে গেলেন।`,"info");hostBroadcast();maybeBot(room);}break;
     case"chat":{const nm=room.players[pidx]?.name||"?";logMsg(room,`💬 ${nm}: ${String(msg.text||"").slice(0,120)}`,"chat");hostBroadcast();}break;
   }}
-function hostBroadcast(){const base=publicState(room);S={...base,you:0};render();NET.conns.forEach(c=>{if(c.open)c.send({...base,you:typeof c.playerIndex==="number"?c.playerIndex:-1});});}
+function hostBroadcast(){const base=publicState(room);S={...base,you:0};render();NET.conns.forEach(c=>{if(c.open)c.send({...base,you:typeof c.playerIndex==="number"?c.playerIndex:-1});});
+  if(room&&room.winner){clearSession();stopGraceLoop();}else{saveSession();saveHostState();}}
+function stopGraceLoop(){if(graceTimer){clearInterval(graceTimer);graceTimer=null;}}
 
 /* ---- GUEST ---- */
-function guestJoin(code){NET.isHost=false;IS_HOST=false;NET.name=nameVal();NET.code=code;connBanner("হোস্টের সাথে সংযোগ হচ্ছে…");
+/* Keep trying to reach the host while a session is active — covers both a brief
+   net blip and a full host recovery (where the host is briefly gone). Only
+   retries once a session exists (i.e. we connected at least once, or we're
+   auto-resuming), so a wrong code still fails fast instead of looping. */
+function scheduleGuestRetry(code){
+  if(NET.retryPending)return;                 // one retry chain at a time (error + timeout can both fire)
+  if(!sessionActive(code)){connBanner(null);return;}
+  if(guestRetry>90){connBanner(null);setErr(entryVisible()?"lobbyErr":"waitErr","পুনঃসংযোগ ব্যর্থ হয়েছে।");clearSession();return;}
+  NET.retryPending=true;guestRetry++;connBanner("🔌 পুনঃসংযোগ হচ্ছে… "+toBn(guestRetry));
+  try{if(NET.peer)NET.peer.destroy();}catch(e){}
+  setTimeout(()=>{NET.retryPending=false;guestJoin(code);},1800);}
+function guestJoin(code){NET.isHost=false;IS_HOST=false;NET.name=nameVal()||NET.name;NET.code=code;if(!NET.rejoining)connBanner("হোস্টের সাথে সংযোগ হচ্ছে…");
+  try{if(NET.peer)NET.peer.destroy();}catch(e){}
   NET.peer=new Peer(PEER_OPTS);
   NET.peer.on("open",()=>{const conn=NET.peer.connect(PEER_PREFIX+code,{reliable:true});NET.hostConn=conn;let opened=false;
-    conn.on("open",()=>{opened=true;connBanner(null);conn.send({type:"join",name:NET.name,clientId,color:NET.color});showWaiting();});
+    conn.on("open",()=>{opened=true;guestRetry=0;NET.rejoining=false;NET.retryPending=false;connBanner(null);conn.send({type:"join",name:NET.name,clientId,color:NET.color});saveSession();if(!S)showWaiting();});
     conn.on("data",msg=>guestOnData(msg));
-    conn.on("close",()=>{connBanner("সংযোগ বিচ্ছিন্ন — পুনরায় চেষ্টা…");setTimeout(()=>guestJoin(code),1500);});
+    conn.on("close",()=>{if(sessionActive(code)){NET.rejoining=true;scheduleGuestRetry(code);}else connBanner(null);});
     conn.on("error",()=>{});
-    setTimeout(()=>{if(!opened){setErr("lobbyErr","রুম খুঁজে পাওয়া যায়নি বা হোস্ট অফলাইন।");connBanner(null);try{NET.peer.destroy();}catch(e){}}},9000);});
-  NET.peer.on("error",e=>{if(e.type==="peer-unavailable")setErr("lobbyErr","এই কোডের কোনো রুম নেই (হোস্ট অনলাইন আছে তো?)।");else setErr("lobbyErr","সংযোগ ত্রুটি: "+e.type);connBanner(null);});}
-function guestOnData(msg){if(msg.type==="welcome"){YOU=msg.you;showWaiting();return;}if(msg.type==="error"){setErr(entryVisible()?"lobbyErr":"waitErr",msg.message);return;}if(msg.type==="state"){S=msg;if(typeof msg.you==="number")YOU=msg.you;render();}}
+    setTimeout(()=>{if(!opened){try{NET.peer.destroy();}catch(e){}if(sessionActive(code)){NET.rejoining=true;return scheduleGuestRetry(code);}setErr("lobbyErr","রুম খুঁজে পাওয়া যায়নি বা হোস্ট অফলাইন।");connBanner(null);}},9000);});
+  NET.peer.on("error",e=>{if(sessionActive(code)){NET.rejoining=true;return scheduleGuestRetry(code);}if(e.type==="peer-unavailable")setErr("lobbyErr","এই কোডের কোনো রুম নেই (হোস্ট অনলাইন আছে তো?)।");else setErr("lobbyErr","সংযোগ ত্রুটি: "+e.type);connBanner(null);});}
+function guestOnData(msg){if(msg.type==="welcome"){YOU=msg.you;NET.rejoining=false;NET.retryPending=false;guestRetry=0;saveSession();if(!S)showWaiting();return;}
+  if(msg.type==="error"){setErr(entryVisible()?"lobbyErr":"waitErr",msg.message);return;}
+  if(msg.type==="state"){S=msg;if(typeof msg.you==="number")YOU=msg.you;render();if(msg.winner)clearSession();else saveSession();}}
 
 function act(msg){if(NET.isHost)hostHandle(clientId,{...msg,clientId});else if(NET.hostConn&&NET.hostConn.open)NET.hostConn.send({...msg,clientId});}
 
@@ -557,11 +629,23 @@ document.getElementById("tradeBtn").onclick=()=>openTrade();
 document.getElementById("votekickBtn").onclick=()=>openVote();
 document.getElementById("voteClose").onclick=()=>document.getElementById("votepop").classList.remove("show");
 document.getElementById("bankruptBtn").onclick=()=>{if(confirm("আপনি কি নিশ্চিত দেউলিয়া ঘোষণা করতে চান? আপনি খেলা থেকে বাদ পড়বেন।"))act({type:"bankrupt"});};
-document.getElementById("leaveBtn").onclick=()=>{if(confirm("খেলা ছেড়ে বের হবেন?")){act({type:"leave"});setTimeout(()=>location.reload(),300);}};
+document.getElementById("leaveBtn").onclick=()=>{if(confirm("খেলা ছেড়ে বের হবেন?")){clearSession();act({type:"leave"});setTimeout(()=>location.reload(),300);}};
 document.getElementById("chatSend").onclick=sendChat;
 document.getElementById("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter")sendChat();});
 function sendChat(){const el=document.getElementById("chatInput");if(el.value.trim()){act({type:"chat",text:el.value.trim()});el.value="";}}
 window.addEventListener("resize",()=>{if(S&&document.getElementById("game").style.display==="flex")repositionTokens();});
+
+/* After a reload/net-drop, auto-rejoin the game in progress instead of dumping
+   the player back to the lobby — host rebuilds from its snapshot, guest re-dials
+   the host. Runs once on load; only fires if a recent session exists. */
+function tryResume(){let s=null;try{s=JSON.parse(localStorage.getItem("bm_session")||"null");}catch(e){}
+  if(!s||!s.code)return;
+  if(Date.now()-s.ts>SESSION_TTL){clearSession();return;}
+  NET.name=s.name||"খেলোয়াড়";NET.color=s.color||PALETTE[0];NET.rejoining=true;
+  const nm=document.getElementById("nameInput");if(nm)nm.value=NET.name;
+  if(s.isHost){connBanner("🔌 খেলা ফিরিয়ে আনছি…");if(!hostResume(s.code))NET.rejoining=false;}
+  else{connBanner("🔌 খেলায় পুনঃসংযোগ হচ্ছে…");guestJoin(s.code);}}
+tryResume();
 
 function entryVisible(){return document.getElementById("waiting").style.display!=="block";}
 function showWaiting(){document.getElementById("entry").style.display="none";document.getElementById("waiting").style.display="block";document.getElementById("roomCode").textContent=NET.code;}
@@ -603,19 +687,23 @@ function wireFold(){document.querySelectorAll("#panel .card h2").forEach(h=>{if(
 
 /* board */
 const cellEls=[];let tokenLayer=null,tokenEls={},renderedPos={},animSeq={};
-function gridPos(i){if(i<=10)return{r:11,c:11-i};if(i<=20)return{r:11-(i-10),c:1};if(i<=30)return{r:1,c:1+(i-20)};return{r:1+(i-30),c:11};}
+/* START (0) at top-left, travelling clockwise: right across the top row, down
+   the right column, left across the bottom, up the left column. */
+function gridPos(i){if(i<=10)return{r:1,c:1+i};if(i<=20)return{r:1+(i-10),c:11};if(i<=30)return{r:11,c:11-(i-20)};return{r:11-(i-30),c:1};}
 function buildBoardDOM(){const bd=document.getElementById("board");bd.innerHTML="";cellEls.length=0;tokenEls={};renderedPos={};animSeq={};
   const center=document.createElement("div");center.id="center";center.innerHTML=`<div class="midflag">🇧🇩</div><div id="logo">ঢাকা<br><b>মনোপলি</b></div><div id="dice"><div class="die"></div><div class="die"></div></div>`;bd.appendChild(center);
   BOARD.forEach((sq,i)=>{const el=document.createElement("div");const gp=gridPos(i);el.style.gridRow=gp.r;el.style.gridColumn=gp.c;el.className="cell "+sq.type+(i%10===0?" corner":"");el.innerHTML=cellHTML(sq);bd.appendChild(el);cellEls[i]=el;});
   tokenLayer=document.createElement("div");tokenLayer.id="tokenLayer";bd.appendChild(tokenLayer);drawDice();}
 function cellHTML(sq){
-  if(sq.type==="prop")return `<div class="bar" style="background:${C[sq.group]}"></div><div class="nm">${sq.n}</div><div class="pr">${taka(sq.price)}</div>`;
-  if(sq.type==="rr")return `<div class="nm">🚉<br>${sq.n}</div><div class="pr">${taka(200)}</div>`;
-  if(sq.type==="util")return `<div class="nm">${sq.n.includes("বিদ্যুৎ")?"💡":"🚰"}<br>${sq.n}</div><div class="pr">${taka(150)}</div>`;
+  // Ownable tiles carry an empty band that only fills — with the OWNER's color —
+  // once someone buys the property (see renderGame). No group colors on the board.
+  if(sq.type==="prop")return `<div class="bar"></div><div class="nm">${sq.n}</div><div class="pr">${taka(sq.price)}</div>`;
+  if(sq.type==="rr")return `<div class="bar"></div><div class="nm">🚉<br>${sq.n}</div><div class="pr">${taka(200)}</div>`;
+  if(sq.type==="util")return `<div class="bar"></div><div class="nm">${sq.n.includes("বিদ্যুৎ")?"💡":"🚰"}<br>${sq.n}</div><div class="pr">${taka(150)}</div>`;
   if(sq.type==="tax")return `<div class="nm">💰<br>${sq.n}</div><div class="pr">${taka(sq.amount)}</div>`;
   if(sq.type==="chance")return `<div class="nm" style="margin-top:20%;font-size:1.6em">❓</div><div class="nm">${sq.n}</div>`;
   if(sq.type==="chest")return `<div class="nm" style="margin-top:20%;font-size:1.6em">📦</div><div class="nm">${sq.n}</div>`;
-  if(sq.type==="go")return `<div style="text-align:center">⬅️<br>শুরু<br>${taka(200)}</div>`;
+  if(sq.type==="go")return `<div style="text-align:center">➡️<br>শুরু<br>${taka(200)}</div>`;
   if(sq.type==="jail")return `<div style="text-align:center">🔒<br>কারাগার</div>`;
   if(sq.type==="free")return `<div style="text-align:center">🅿️<br>ফ্রি<br>পার্কিং</div>`;
   if(sq.type==="gotojail")return `<div style="text-align:center">🚔<br>জেলে<br>যাও</div>`;
@@ -637,8 +725,11 @@ function repositionTokens(){S.players.forEach((p,i)=>{if(tokenEls[i]&&renderedPo
 function renderGame(){
   const pl=document.getElementById("players");pl.innerHTML="";
   S.players.forEach((p,i)=>{const d=document.createElement("div");d.className="prow"+(i===S.turn?" active":"")+(p.bankrupt?" bankrupt":"");
-    d.innerHTML=`${miniAv(p.color)}<div class="nm">${p.name}${i===YOU?" (আপনি)":""}</div>${p.jail?'<span class="badge">জেল</span>':""}${p.isBot?'<span class="badge">বট</span>':`<span class="${p.connected?"on":"off"}"></span>`}<div class="rt"><span class="money">${taka(p.money)}</span><span class="worth">সম্পদ ${taka(netWorth(i))}</span></div>`;pl.appendChild(d);});
-  cellEls.forEach((el,i)=>{el.classList.remove("own","here");el.style.removeProperty("--own");const o=S.ownership[i];if(o!==undefined){el.classList.add("own");el.style.setProperty("--own",S.players[o].color);}});
+    const connBadge=p.isBot?'<span class="badge">বট</span>':(p.connected?'<span class="on"></span>':(p.discLeft!=null?`<span class="badge disc">🔌 ${fmtClock(p.discLeft)}</span>`:'<span class="off"></span>'));
+    d.innerHTML=`${miniAv(p.color)}<div class="nm">${p.name}${i===YOU?" (আপনি)":""}</div>${p.jail?'<span class="badge">জেল</span>':""}${connBadge}<div class="rt"><span class="money">${taka(p.money)}</span><span class="worth">সম্পদ ${taka(netWorth(i))}</span></div>`;pl.appendChild(d);});
+  cellEls.forEach((el,i)=>{el.classList.remove("own","here");el.style.removeProperty("--own");const bar=el.querySelector(".bar");const o=S.ownership[i];
+    if(o!==undefined){el.classList.add("own");el.style.setProperty("--own",S.players[o].color);if(bar){bar.style.background=S.players[o].color;bar.classList.add("filled");}}
+    else if(bar){bar.style.background="";bar.classList.remove("filled");}});
   if(S.players[S.turn])cellEls[S.players[S.turn].pos]?.classList.add("here");
   document.querySelectorAll(".houses").forEach(e=>e.remove());
   Object.entries(S.houses).forEach(([pos,n])=>{if(!n)return;const h=document.createElement("div");h.className="houses";if(n===5){const e=document.createElement("div");e.className="house hotel";h.appendChild(e);}else for(let k=0;k<n;k++){const e=document.createElement("div");e.className="house";h.appendChild(e);}cellEls[pos].appendChild(h);});
